@@ -18,6 +18,8 @@ classDiagram
         class VirtualCircuitBlock {
             +service_speed
             +sdp_constraints
+            +sap_a
+            +sap_z
         }
         class ServiceAttachmentPointBlock{
             +vlan
@@ -35,14 +37,14 @@ classDiagram
     }
     namespace SDP {
         class ServiceDemarcationPointBlock {
-            +stp_id_a
-            +stp_id_z
+            +stp_a
+            +stp_z
         }
     }
     namespace SwitchingService {
         class SwitchingServiceBlock {
             +switching_service_id
-            +topology_id
+            +topology
         }
     }
     namespace Topology {
