@@ -16,13 +16,18 @@ as its Network Resource Manager (NRM).
 classDiagram
     namespace MDP2P {
         class VirtualCircuitBlock {
+            +description
             +saps
             +service_speed
-            +sdps
+            +sdp_constraints
         }
-        class ServiceAttachmentPointBlock{
-            +vlan
+        class ServiceAttachmentPointBlock {
+            +label
             +stp
+        }
+        class SdpConstraintBlock {
+            +constraint_type
+            +sdp
         }
     }
     namespace STP {
@@ -58,6 +63,7 @@ classDiagram
     ServiceAttachmentPointBlock "n" -- "1" ServiceTerminationPointBlock
     ServiceTerminationPointBlock "n" -- "1" SwitchingServiceBlock
     SwitchingServiceBlock "n" -- "1" TopologyBlock
-    VirtualCircuitBlock "n"  -- "n" ServiceDemarcationPointBlock
+    VirtualCircuitBlock "n"  -- "n" SdpConstraintBlock
+    SdpConstraintBlock "1"  -- "1" ServiceDemarcationPointBlock
     ServiceDemarcationPointBlock "1"  -- "2" ServiceTerminationPointBlock
 ```
