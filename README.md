@@ -29,7 +29,7 @@ classDiagram
     namespace STP {
         class ServiceTerminationPointBlock {
             +stp_id
-            +name
+            +stp_name
             +capacity
             +label_group
             +switching_service
@@ -39,18 +39,20 @@ classDiagram
         class ServiceDemarcationPointBlock {
             +stp_a
             +stp_z
+            +sdp_name
         }
     }
     namespace SwitchingService {
         class SwitchingServiceBlock {
             +switching_service_id
+            +switching_service_name
             +topology
         }
     }
     namespace Topology {
         class TopologyBlock {
             +topology_id
-            +name
+            +topology_name
         }
     }
 
