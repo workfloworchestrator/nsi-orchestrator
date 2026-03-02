@@ -16,10 +16,9 @@ as its Network Resource Manager (NRM).
 classDiagram
     namespace MDP2P {
         class VirtualCircuitBlock {
+            +saps
             +service_speed
-            +sdp_constraints
-            +sap_a
-            +sap_z
+            +sdps
         }
         class ServiceAttachmentPointBlock{
             +vlan
