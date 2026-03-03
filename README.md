@@ -20,6 +20,7 @@ classDiagram
             +saps
             +service_speed
             +sdp_constraints
+            +state
         }
         class ServiceAttachmentPointBlock {
             +label
