@@ -26,8 +26,9 @@ between research parties on other sides of the Atlantic. The ANA-GRAM project is
 spearheaded by the ANA Platform & Requirements Working Group, under guidance of the 
 ANA Engineering and ANA Planning Groups.  
 
-![Advanced North-Atlantic Consortium Logo](/artwork/ana-logo-scaled-ab2.png)
-
+<p align="center" width="50%">
+    <img width="50%" src="/artwork/ana-logo-scaled-ab2.png">
+</p>
 
 ## Products and Product Blocks
 
