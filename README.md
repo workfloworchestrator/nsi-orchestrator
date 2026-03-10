@@ -11,6 +11,24 @@ as source of information and the
 [NSI Aggregator Proxy](https://github.com/workfloworchestrator/nsi-aggregator-proxy)
 as its Network Resource Manager (NRM).
 
+## Project ANA-GRAM
+
+This software is being developed by the 
+[Advanced North-Atlantic Consortium](https://www.anaeng.global/), 
+a cooperation between National Education and Research Networks (NRENs) and 
+research partners to provide network connectivity for research and education 
+across the North-Atlantic, as part of the ANA-GRAM project. 
+
+The goal of the ANA-GRAM project is to federate the ANA trans-Atlantic links through
+[Network Service Interface (NSI)](https://ogf.org/documents/GFD.237.pdf)-based automation.
+This will enable the automated provisioning of L2 circuits spanning different domains 
+between research parties on other sides of the Atlantic. The ANA-GRAM project is 
+spearheaded by the ANA Platform & Requirements Working Group, under guidance of the 
+ANA Engineering and ANA Planning Groups.  
+
+![Advanced North-Atlantic Consortium Logo](/artwork/ana-logo-scaled-ab2.png)
+
+
 ## Products and Product Blocks
 
 ```mermaid
