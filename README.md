@@ -14,7 +14,6 @@ as its Network Resource Manager (NRM).
 ## Products and Product Blocks
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
 classDiagram
     namespace MDP2P {
         class VirtualCircuitBlock {
