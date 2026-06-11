@@ -5,10 +5,9 @@ description = "NSI WFO implentation"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "orchestrator-core>=4.8.2",
-    "pydantic-settings>=2.13.1",
-    "python-statemachine>=3.0.0",
-    "ruff>=0.15.10",
+    "orchestrator-core==4.8.2",
+    "pydantic-settings==2.13.1",
+    "python-statemachine==3.0.0",
 ]
 
 [tool.ruff]
@@ -16,5 +15,5 @@ target-version = "py313"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.10",
+    "ruff==0.15.10",
 ]
