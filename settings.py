@@ -6,4 +6,4 @@ class OrchestratorSettings(AppSettings):
     PORT: int = 8080
 
 
-app_settings = OrchestratorSettings()
+app_settings = OrchestratorSettings()  # type: ignore[call-arg]
