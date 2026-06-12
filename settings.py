@@ -1,9 +1,8 @@
-from orchestrator.core.settings import AppSettings
+from pydantic_settings import BaseSettings
 
 
-class OrchestratorSettings(AppSettings):
-    HOST: str = "127.0.0.1"
-    PORT: int = 8080
+class Settings(BaseSettings):
+    """Application-specific settings for the NSI orchestrator."""
 
 
-app_settings = OrchestratorSettings()  # type: ignore[call-arg]
+settings = Settings()

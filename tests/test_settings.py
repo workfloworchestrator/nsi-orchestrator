@@ -1,18 +1,15 @@
-"""Smoke tests for the orchestrator settings."""
+"""Smoke tests for the application settings."""
 
 from __future__ import annotations
 
-import pytest
+from pydantic_settings import BaseSettings
 
-from settings import OrchestratorSettings
-
-
-def test_default_host_and_port() -> None:
-    settings = OrchestratorSettings()
-    assert settings.HOST == "127.0.0.1"
-    assert settings.PORT == 8080
+from settings import Settings, settings
 
 
-def test_port_override_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PORT", "9090")
-    assert OrchestratorSettings().PORT == 9090
+def test_settings_is_basesettings_subclass() -> None:
+    assert issubclass(Settings, BaseSettings)
+
+
+def test_module_singleton_instantiated() -> None:
+    assert isinstance(settings, Settings)
