@@ -11,17 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
+from orchestrator.core.domain import SUBSCRIPTION_MODEL_REGISTRY
 
-from orchestrator.core import OrchestratorCore
-from orchestrator.core.settings import app_settings
+from products.product_types.topology import Topology
 
-import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
-import workflows  # noqa: F401  Registers the topology workflow instances
-
-# Serve our project translations from ./translations unless overridden via TRANSLATIONS_DIR.
-if app_settings.TRANSLATIONS_DIR is None:
-    app_settings.TRANSLATIONS_DIR = Path("translations")
-
-app = OrchestratorCore(base_settings=app_settings)
-app.register_graphql()
+SUBSCRIPTION_MODEL_REGISTRY.update(
+    {
+        "topology": Topology,
+        },
+)  # fmt:skip

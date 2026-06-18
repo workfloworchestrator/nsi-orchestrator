@@ -11,17 +11,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
+"""Create data head.
 
-from orchestrator.core import OrchestratorCore
-from orchestrator.core.settings import app_settings
+Revision ID: 6de093f3da73
+Revises:
+Create Date: 2026-06-18T13:31:58.373851
 
-import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
-import workflows  # noqa: F401  Registers the topology workflow instances
+"""
 
-# Serve our project translations from ./translations unless overridden via TRANSLATIONS_DIR.
-if app_settings.TRANSLATIONS_DIR is None:
-    app_settings.TRANSLATIONS_DIR = Path("translations")
+# revision identifiers, used by Alembic.
+revision = "6de093f3da73"
+down_revision = None
+branch_labels = ("data",)
+depends_on = "cab8b6a0ac92"
 
-app = OrchestratorCore(base_settings=app_settings)
-app.register_graphql()
+
+def upgrade() -> None:
+    pass
+
+
+def downgrade() -> None:
+    pass

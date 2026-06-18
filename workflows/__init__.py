@@ -11,17 +11,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
+from orchestrator.core.workflows import LazyWorkflowInstance
 
-from orchestrator.core import OrchestratorCore
-from orchestrator.core.settings import app_settings
-
-import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
-import workflows  # noqa: F401  Registers the topology workflow instances
-
-# Serve our project translations from ./translations unless overridden via TRANSLATIONS_DIR.
-if app_settings.TRANSLATIONS_DIR is None:
-    app_settings.TRANSLATIONS_DIR = Path("translations")
-
-app = OrchestratorCore(base_settings=app_settings)
-app.register_graphql()
+LazyWorkflowInstance("workflows.topology.create_topology", "create_topology")
+LazyWorkflowInstance("workflows.topology.modify_topology", "modify_topology")
+LazyWorkflowInstance("workflows.topology.terminate_topology", "terminate_topology")
+LazyWorkflowInstance("workflows.topology.validate_topology", "validate_topology")

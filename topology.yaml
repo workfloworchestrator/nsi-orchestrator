@@ -1,0 +1,21 @@
+config:
+  summary_forms: true
+name: topology
+type: Topology
+tag: TOPOLOGY
+description: "Network Service Interface topology"
+product_blocks:
+  - name: topology
+    type: Topology
+    tag: TOPOLOGY
+    description: "Topology product block"
+    fields:
+      - name: topology_id
+        description: "Unique NSI topology identifier"
+        type: str
+        required: provisioning
+      - name: topology_name
+        description: "Topology description (as set by topology operator)"
+        type: str
+        required: provisioning
+        modifiable: true

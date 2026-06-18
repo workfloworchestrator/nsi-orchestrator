@@ -1281,6 +1281,7 @@ name = "nsi-orchestrator"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "orchestrator-core" },
     { name = "pydantic-settings" },
     { name = "python-statemachine" },
@@ -1295,6 +1296,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "orchestrator-core", specifier = "==5.0.4" },
     { name = "pydantic-settings", specifier = "==2.14.1" },
     { name = "python-statemachine", specifier = "==3.1.2" },
