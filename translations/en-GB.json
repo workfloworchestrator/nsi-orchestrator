@@ -1,0 +1,14 @@
+{
+    "forms": {
+        "fields": {
+            "topology": "Topology",
+            "topology_info": "Select the topology to create a subscription for"
+        }
+    },
+    "workflow": {
+        "create_topology": "Create topology",
+        "modify_topology": "Modify topology",
+        "terminate_topology": "Terminate topology",
+        "validate_topology": "Validate topology"
+    }
+}

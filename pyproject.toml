@@ -5,6 +5,7 @@ description = "NSI WFO implentation"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "httpx==0.28.1",
     "orchestrator-core==5.0.4",
     "pydantic-settings==2.14.1",
     "python-statemachine==3.1.2",
@@ -19,6 +20,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["main", "settings", "wsgi"]
+
+[tool.setuptools.packages.find]
+include = ["products*", "workflows*", "services*"]
 
 [tool.uv]
 package = true
@@ -52,6 +56,9 @@ strict_equality = true
 show_error_codes = true
 show_column_numbers = true
 exclude = [
+    '^build/',
+    '^\.venv/',
+    '^migrations/',  # generated alembic scripts; also excluded from ruff
 ]
 
 [[tool.mypy.overrides]]

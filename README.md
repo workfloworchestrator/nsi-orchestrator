@@ -116,3 +116,51 @@ classDiagram
     SdpConstraintBlock "1"  -- "1" ServiceDemarcationPointBlock
     ServiceDemarcationPointBlock "1"  -- "2" ServiceTerminationPointBlock
 ```
+
+## Topology product
+
+The topology product tracks the NSI topologies discovered through the
+[DDS Proxy](https://github.com/workfloworchestrator/nsi-dds-proxy). Each subscription represents a
+single topology, identified by its `topology_id` and described by a `topology_name`. Four workflows
+manage its lifecycle:
+
+- **Create** — presents a dropdown of the topologies returned by the DDS Proxy `GET /topologies`
+  endpoint that do not yet have a subscription, and initialises `topology_name` from the name the
+  topology operator set in the DDS.
+- **Modify** — change the `topology_name` (`topology_id` is read-only).
+- **Validate** — assert the subscription's `topology_id` is still advertised by the DDS Proxy.
+- **Terminate** — remove the subscription. The DDS is the authoritative, read-only source of
+  topologies, so nothing is deprovisioned in an external system.
+
+## Configuration
+
+Configuration is read from environment variables.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URI` | _orchestrator-core default_ | PostgreSQL connection string for the orchestrator database. |
+| `TRANSLATIONS_DIR` | `translations` _(set by the app)_ | Directory of project translation files (workflow names and form-field labels) served at `/api/translations/{lang}`. |
+| `DDS_PROXY_BASE_URL` | `http://localhost:8080` | Base URL of the nsi-dds-proxy REST API. |
+| `DDS_PROXY_TIMEOUT_SECONDS` | `30.0` | HTTP timeout for DDS Proxy requests. |
+| `DDS_PROXY_MTLS_ENABLED` | `false` | Authenticate to the DDS Proxy with mutual TLS. Enable in deployments. |
+| `DDS_PROXY_CLIENT_CERT` | _(unset)_ | Path to the PEM client certificate (used when mTLS is enabled). |
+| `DDS_PROXY_CLIENT_KEY` | _(unset)_ | Path to the PEM private key (used when mTLS is enabled). |
+| `DDS_PROXY_CA_BUNDLE` | _(unset)_ | Path to a CA bundle used to verify the DDS Proxy server (used when mTLS is enabled). |
+| `DDS_PROXY_AUTH_METHOD` | `x509` | Local-dev only: value of the `X-Auth-Method` header sent when mTLS is disabled. |
+| `DDS_PROXY_CLIENT_DN` | `CN=...` | Local-dev only: value of the `X-Client-DN` header sent when mTLS is disabled. |
+
+When `DDS_PROXY_MTLS_ENABLED` is `false`, the orchestrator authenticates to the DDS Proxy by
+sending the `X-Auth-Method` / `X-Client-DN` identity headers it trusts at its edge — a development
+shortcut only. In a deployment, enable mTLS and configure the certificate, key, and CA bundle.
+
+### Default customer
+
+This orchestrator has no CRM, so topology subscriptions are created against orchestrator-core's
+built-in default customer (the create form does not ask for one). Its identity is configured through
+the standard orchestrator-core environment variables — no application-specific settings are needed:
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEFAULT_CUSTOMER_IDENTIFIER` | `59289a57-70fb-4ff5-9c93-10fe67b12434` | UUID stored as each subscription's customer id. |
+| `DEFAULT_CUSTOMER_FULLNAME` | `Default::Orchestrator-Core Customer` | Display name shown for the customer. |
+| `DEFAULT_CUSTOMER_SHORTCODE` | `default-cust` | Short code shown for the customer. |
