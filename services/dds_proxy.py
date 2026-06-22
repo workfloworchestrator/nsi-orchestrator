@@ -70,6 +70,21 @@ class DdsSwitchingService(BaseModel):
     topology_id: str
 
 
+class DdsServiceTerminationPoint(BaseModel):
+    """A service termination point from the dds-proxy ``GET /service-termination-points`` endpoint.
+
+    The proxy serialises with camelCase aliases (``labelGroup``, ``switchingServiceId``).
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    id: str
+    name: str
+    capacity: int
+    label_group: str
+    switching_service_id: str
+
+
 def _client_kwargs() -> dict[str, Any]:
     """Build the httpx client arguments for the configured authentication mode."""
     if settings.dds_proxy_mtls_enabled:
@@ -127,3 +142,8 @@ def fetch_topologies() -> list[DdsTopology]:
 def fetch_switching_services() -> list[DdsSwitchingService]:
     """Return all switching services known to the dds-proxy."""
     return [DdsSwitchingService.model_validate(item) for item in _fetch("/switching-services")]
+
+
+def fetch_service_termination_points() -> list[DdsServiceTerminationPoint]:
+    """Return all service termination points known to the dds-proxy."""
+    return [DdsServiceTerminationPoint.model_validate(item) for item in _fetch("/service-termination-points")]

@@ -25,3 +25,9 @@ LazyWorkflowInstance(
     "terminate_switchingservice",
 )
 LazyWorkflowInstance("workflows.switchingservice.validate_switchingservice", "validate_switchingservice")
+
+LazyWorkflowInstance("workflows.stp.create_stp", "create_stp")
+LazyWorkflowInstance("workflows.stp.modify_stp", "modify_stp")
+LazyWorkflowInstance("workflows.stp.terminate_stp", "terminate_stp")
+LazyWorkflowInstance("workflows.stp.validate_stp", "validate_stp")
+LazyWorkflowInstance("workflows.stp.reconcile_stp", "reconcile_stp")

@@ -10,17 +10,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from orchestrator.core.domain import SUBSCRIPTION_MODEL_REGISTRY
-
-from products.product_types.stp import ServiceTerminationPoint
-from products.product_types.switchingservice import SwitchingService
-from products.product_types.topology import Topology
-
-SUBSCRIPTION_MODEL_REGISTRY.update(
-    {
-        "topology": Topology,
-        "switchingservice": SwitchingService,
-        "stp": ServiceTerminationPoint,
-        },
-)  # fmt:skip

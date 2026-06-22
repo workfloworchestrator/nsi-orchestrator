@@ -1,6 +1,11 @@
 {
     "forms": {
         "fields": {
+            "capacity": "Capacity",
+            "label_group": "Label group",
+            "stp_id": "Service termination point",
+            "stp_id_info": "Select the service termination point to create a subscription for",
+            "stp_name": "Service termination point name",
             "switching_service_id": "Switching service",
             "switching_service_id_info": "Select the switching service to create a subscription for",
             "switching_service_name": "Switching service name",
@@ -9,12 +14,17 @@
         }
     },
     "workflow": {
+        "create_stp": "Create service termination point",
         "create_switchingservice": "Create switching service",
         "create_topology": "Create topology",
+        "modify_stp": "Modify service termination point",
         "modify_switchingservice": "Modify switching service",
         "modify_topology": "Modify topology",
+        "reconcile_stp": "Reconcile service termination point",
+        "terminate_stp": "Terminate service termination point",
         "terminate_switchingservice": "Terminate switching service",
         "terminate_topology": "Terminate topology",
+        "validate_stp": "Validate service termination point",
         "validate_switchingservice": "Validate switching service",
         "validate_topology": "Validate topology"
     }
