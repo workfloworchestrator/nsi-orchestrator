@@ -26,6 +26,7 @@ from orchestrator.core.domain.base import (
     SubscriptionModel,
 )
 
+from products.product_types.sdp import ServiceDemarcationPointProvisioning
 from products.product_types.stp import ServiceTerminationPointProvisioning
 from products.product_types.switchingservice import SwitchingServiceProvisioning
 from products.product_types.topology import TopologyProvisioning
@@ -39,16 +40,21 @@ def description(model: ProductModel | ProductBlockModel | SubscriptionModel) -> 
 
 @description.register
 def _topology_description(topology: TopologyProvisioning) -> str:
-    return f"{topology.product.name} {topology.topology.topology_name}"
+    return f"{topology.product.tag} {topology.topology.topology_name}"
 
 
 @description.register
 def _switchingservice_description(
     switchingservice: SwitchingServiceProvisioning,
 ) -> str:
-    return f"{switchingservice.product.name} {switchingservice.switchingservice.switching_service_name}"
+    return f"{switchingservice.product.tag} {switchingservice.switchingservice.switching_service_name}"
 
 
 @description.register
 def _stp_description(stp: ServiceTerminationPointProvisioning) -> str:
-    return f"{stp.product.name} {stp.stp.stp_name}"
+    return f"{stp.product.tag} {stp.stp.stp_name}"
+
+
+@description.register
+def _sdp_description(sdp: ServiceDemarcationPointProvisioning) -> str:
+    return f"{sdp.product.tag} {sdp.sdp.sdp_name}"

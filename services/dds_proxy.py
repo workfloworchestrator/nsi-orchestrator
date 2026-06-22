@@ -85,6 +85,18 @@ class DdsServiceTerminationPoint(BaseModel):
     switching_service_id: str
 
 
+class DdsServiceDemarcationPoint(BaseModel):
+    """A service demarcation point from the dds-proxy ``GET /service-demarcation-points`` endpoint.
+
+    An SDP has no id of its own; it is the pair of STP ids (camelCase ``stpAId`` / ``stpZId``).
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    stp_a_id: str
+    stp_z_id: str
+
+
 def _client_kwargs() -> dict[str, Any]:
     """Build the httpx client arguments for the configured authentication mode."""
     if settings.dds_proxy_mtls_enabled:
@@ -147,3 +159,8 @@ def fetch_switching_services() -> list[DdsSwitchingService]:
 def fetch_service_termination_points() -> list[DdsServiceTerminationPoint]:
     """Return all service termination points known to the dds-proxy."""
     return [DdsServiceTerminationPoint.model_validate(item) for item in _fetch("/service-termination-points")]
+
+
+def fetch_service_demarcation_points() -> list[DdsServiceDemarcationPoint]:
+    """Return all service demarcation points known to the dds-proxy."""
+    return [DdsServiceDemarcationPoint.model_validate(item) for item in _fetch("/service-demarcation-points")]

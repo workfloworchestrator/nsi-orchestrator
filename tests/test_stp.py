@@ -68,6 +68,6 @@ def test_available_service_termination_points_excludes_subscribed_and_requires_s
 
 def test_stp_description_uses_product_name_and_stp_name() -> None:
     stp_description = description.dispatch(ServiceTerminationPointProvisioning)
-    stub = SimpleNamespace(product=SimpleNamespace(name="stp"), stp=SimpleNamespace(stp_name="Core STP"))
+    stub = SimpleNamespace(product=SimpleNamespace(tag="STP"), stp=SimpleNamespace(stp_name="Core STP"))
 
-    assert stp_description(stub) == "stp Core STP"
+    assert stp_description(stub) == "STP Core STP"

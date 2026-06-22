@@ -31,11 +31,11 @@ def test_topology_description_uses_product_name_and_topology_name() -> None:
     # Call the registered implementation directly with a stub, so no database is needed.
     topology_description = description.dispatch(TopologyProvisioning)
     stub = SimpleNamespace(
-        product=SimpleNamespace(name="topology"),
+        product=SimpleNamespace(tag="TOPOLOGY"),
         topology=SimpleNamespace(topology_name="Development topology west"),
     )
 
-    assert topology_description(stub) == "topology Development topology west"
+    assert topology_description(stub) == "TOPOLOGY Development topology west"
 
 
 def test_description_for_unregistered_type_raises() -> None:
