@@ -19,12 +19,23 @@ from types import SimpleNamespace
 
 import pytest
 
+from products.product_types.mdp2p import MultiDomainPoint2PointProvisioning
 from products.product_types.topology import TopologyProvisioning
 from products.services.description import description
 
 
 def test_topology_is_registered() -> None:
     assert TopologyProvisioning in description.registry
+
+
+def test_mdp2p_description_uses_product_tag_and_vc_description() -> None:
+    mdp2p_description = description.dispatch(MultiDomainPoint2PointProvisioning)
+    stub = SimpleNamespace(
+        product=SimpleNamespace(tag="MDP2P"),
+        vc=SimpleNamespace(description="Amsterdam to Geneva"),
+    )
+
+    assert mdp2p_description(stub) == "MDP2P Amsterdam to Geneva"
 
 
 def test_topology_description_uses_product_name_and_topology_name() -> None:

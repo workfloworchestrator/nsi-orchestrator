@@ -13,6 +13,7 @@
 
 from orchestrator.core.domain import SUBSCRIPTION_MODEL_REGISTRY
 
+from products.product_types.mdp2p import MultiDomainPoint2Point
 from products.product_types.sdp import ServiceDemarcationPoint
 from products.product_types.stp import ServiceTerminationPoint
 from products.product_types.switchingservice import SwitchingService
@@ -24,5 +25,6 @@ SUBSCRIPTION_MODEL_REGISTRY.update(
         "switchingservice": SwitchingService,
         "stp": ServiceTerminationPoint,
         "sdp": ServiceDemarcationPoint,
+        "mdp2p": MultiDomainPoint2Point,
         },
 )  # fmt:skip

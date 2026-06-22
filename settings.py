@@ -37,5 +37,29 @@ class Settings(BaseSettings):
     dds_proxy_auth_method: str = "x509"
     dds_proxy_client_dn: str = "CN=claude@local.laptop"
 
+    # Base URL of the nsi-aggregator-proxy REST API (connection reserve/provision/release).
+    aggregator_proxy_base_url: str = "http://localhost:8080"
+    aggregator_proxy_timeout_seconds: float = 30.0
+
+    # Authentication against the aggregator-proxy mirrors the dds-proxy: real mTLS when
+    # deployed, edge identity headers as a local-development shortcut. See the dds_proxy_*
+    # fields above for the meaning of each setting.
+    aggregator_proxy_mtls_enabled: bool = False
+    aggregator_proxy_client_cert: str | None = None
+    aggregator_proxy_client_key: str | None = None
+    aggregator_proxy_ca_bundle: str | None = None
+    aggregator_proxy_auth_method: str = "x509"
+    aggregator_proxy_client_dn: str = "CN=claude@local.laptop"
+
+    # NSA URNs exchanged with the aggregator: who is asking (this orchestrator) and which
+    # aggregator answers. provider_nsa must match the aggregator-proxy's configured PROVIDER_NSA.
+    requester_nsa: str = "urn:ogf:network:example.net:2026:nsa:nsi-orchestrator"
+    provider_nsa: str = "urn:ogf:network:example.net:2026:nsa:safnari"
+
+    # This orchestrator's own externally reachable base URL. The aggregator-proxy POSTs reservation
+    # results back to <orchestrator_callback_base_url><callback_route>, so it must be an absolute
+    # URL the proxy can reach. Override in every deployment.
+    orchestrator_callback_base_url: str = "http://localhost:8080"
+
 
 settings = Settings()

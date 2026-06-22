@@ -26,6 +26,7 @@ from orchestrator.core.domain.base import (
     SubscriptionModel,
 )
 
+from products.product_types.mdp2p import MultiDomainPoint2PointProvisioning
 from products.product_types.sdp import ServiceDemarcationPointProvisioning
 from products.product_types.stp import ServiceTerminationPointProvisioning
 from products.product_types.switchingservice import SwitchingServiceProvisioning
@@ -58,3 +59,8 @@ def _stp_description(stp: ServiceTerminationPointProvisioning) -> str:
 @description.register
 def _sdp_description(sdp: ServiceDemarcationPointProvisioning) -> str:
     return f"{sdp.product.tag} {sdp.sdp.sdp_name}"
+
+
+@description.register
+def _mdp2p_description(mdp2p: MultiDomainPoint2PointProvisioning) -> str:
+    return f"{mdp2p.product.tag} {mdp2p.vc.description}"
