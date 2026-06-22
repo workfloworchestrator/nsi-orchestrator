@@ -29,7 +29,7 @@ class TopologyBlockProvisioning(TopologyBlockInactive, lifecycle=[SubscriptionLi
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"{self.name} {self.topology_id}"
+        return f"{self.name} {self.topology_id.removeprefix('urn:ogf:network:')}"
 
 
 class TopologyBlock(TopologyBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
