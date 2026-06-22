@@ -26,7 +26,7 @@ from products.product_types.switchingservice import (
     SwitchingServiceProvisioning,
 )
 from products.services.description import description
-from workflows.shared import create_summary_form
+from workflows.shared import create_summary_form, fetch_for_form
 from workflows.switchingservice.shared.forms import (
     available_switching_services,
     switchingservice_selector,
@@ -39,7 +39,7 @@ logger = structlog.get_logger(__name__)
 def initial_input_form_generator(product_name: str) -> FormGenerator:
     # Only services without a subscription whose topology is already subscribed, so the topology
     # link in the construct step always resolves.
-    services = available_switching_services()
+    services = fetch_for_form(available_switching_services)
     topology_id_by_id = {service.id: service.topology_id for service in services}
     SwitchingServiceChoice = switchingservice_selector(services)
 

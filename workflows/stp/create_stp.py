@@ -23,7 +23,7 @@ from pydantic_forms.types import FormGenerator, State, UUIDstr
 
 from products.product_types.stp import ServiceTerminationPointInactive, ServiceTerminationPointProvisioning
 from products.services.description import description
-from workflows.shared import create_summary_form
+from workflows.shared import create_summary_form, fetch_for_form
 from workflows.stp.shared.forms import (
     available_service_termination_points,
     stp_selector,
@@ -36,7 +36,7 @@ logger = structlog.get_logger(__name__)
 def initial_input_form_generator(product_name: str) -> FormGenerator:
     # Only STPs without a subscription whose switching service is already subscribed, so the
     # switching_service link in the construct step always resolves.
-    stps = available_service_termination_points()
+    stps = fetch_for_form(available_service_termination_points)
     stp_by_id = {stp.id: stp for stp in stps}
     ServiceTerminationPointChoice = stp_selector(stps)
 

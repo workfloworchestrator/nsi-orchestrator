@@ -31,3 +31,8 @@ LazyWorkflowInstance("workflows.stp.modify_stp", "modify_stp")
 LazyWorkflowInstance("workflows.stp.terminate_stp", "terminate_stp")
 LazyWorkflowInstance("workflows.stp.validate_stp", "validate_stp")
 LazyWorkflowInstance("workflows.stp.reconcile_stp", "reconcile_stp")
+
+LazyWorkflowInstance("workflows.sdp.create_sdp", "create_sdp")
+LazyWorkflowInstance("workflows.sdp.modify_sdp", "modify_sdp")
+LazyWorkflowInstance("workflows.sdp.terminate_sdp", "terminate_sdp")
+LazyWorkflowInstance("workflows.sdp.validate_sdp", "validate_sdp")

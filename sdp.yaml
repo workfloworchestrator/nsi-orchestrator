@@ -1,0 +1,24 @@
+config:
+  summary_forms: true
+name: sdp
+type: ServiceDemarcationPoint
+tag: SDP
+description: "Network Service Interface service demarcation point"
+product_blocks:
+  - name: sdp
+    type: ServiceDemarcationPoint
+    tag: SDP
+    description: "Service demarcation point product block"
+    fields:
+      - name: sdp_name
+        description: "Service demarcation point name"
+        type: str
+        required: provisioning
+        modifiable: true
+      - name: stps
+        type: list
+        list_type: ServiceTerminationPoint
+        min_items: 2
+        max_items: 2
+        description: "The two STP that form the SDP"
+        required: provisioning

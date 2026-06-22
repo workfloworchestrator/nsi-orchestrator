@@ -11,8 +11,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Generator
-from typing import Any, TypeAlias, cast
+from collections.abc import Callable, Generator
+from typing import Any, NoReturn, TypeAlias, TypeVar, cast
 from uuid import UUID
 
 from orchestrator.core.db import (
@@ -27,8 +27,15 @@ from orchestrator.core.domain.base import ProductBlockModel
 from orchestrator.core.forms import FormPage
 from orchestrator.core.forms.validators import MigrationSummary, migration_summary
 from orchestrator.core.types import SubscriptionLifecycle
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic_forms.core.translations import translations
+from pydantic_forms.exceptions import FormValidationError
+from pydantic_i18n import PydanticI18n
 from sqlalchemy import Select, select
+
+from services.dds_proxy import DdsProxyError
+
+T = TypeVar("T")
 
 
 def summary_form(product_name: str, summary_data: dict) -> Generator:
@@ -98,3 +105,41 @@ def subscription_id_for_value(product_type: str, resource_type: str, value: str)
     )
     result: UUID | None = db.session.scalars(query).first()
     return result
+
+
+def subscription_ids_for_product_type(product_type: str) -> list[UUID]:
+    """Return the subscription ids of all non-terminated subscriptions of ``product_type``."""
+    query = (
+        select(SubscriptionTable.subscription_id)
+        .join(ProductTable, SubscriptionTable.product_id == ProductTable.product_id)
+        .where(ProductTable.product_type == product_type)
+        .where(SubscriptionTable.status != SubscriptionLifecycle.TERMINATED)
+    )
+    return list(db.session.scalars(query))
+
+
+def _raise_form_validation_error(message: str) -> NoReturn:
+    """Raise a FormValidationError carrying ``message`` (rendered cleanly by the orchestrator UI)."""
+
+    class _FormError(BaseModel):
+        @model_validator(mode="after")
+        def _fail(self) -> "_FormError":
+            raise ValueError(message)
+
+    try:
+        _FormError()
+    except ValidationError as validation_error:
+        raise FormValidationError("form", validation_error, PydanticI18n(translations)) from None
+    raise RuntimeError(message)  # unreachable: _FormError always raises during validation
+
+
+def fetch_for_form(fetch: Callable[[], T]) -> T:
+    """Run a dds-proxy ``fetch`` while building an input form.
+
+    Converts a ``DdsProxyError`` (e.g. the proxy is unavailable) into a ``FormValidationError`` so
+    the UI shows a clear message instead of a 500.
+    """
+    try:
+        return fetch()
+    except DdsProxyError as exc:
+        _raise_form_validation_error(str(exc))

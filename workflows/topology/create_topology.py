@@ -23,7 +23,7 @@ from pydantic_forms.types import FormGenerator, State, UUIDstr
 
 from products.product_types.topology import TopologyInactive, TopologyProvisioning
 from products.services.description import description
-from workflows.shared import create_summary_form
+from workflows.shared import create_summary_form, fetch_for_form
 from workflows.topology.shared.forms import available_topologies, topology_selector
 
 logger = structlog.get_logger(__name__)
@@ -31,7 +31,7 @@ logger = structlog.get_logger(__name__)
 
 def initial_input_form_generator(product_name: str) -> FormGenerator:
     # Offer the topologies known to the dds-proxy that do not yet have a subscription.
-    topologies = available_topologies()
+    topologies = fetch_for_form(available_topologies)
     topology_name_by_id = {topology.id: topology.name for topology in topologies}
     TopologyChoice = topology_selector(topologies)
 

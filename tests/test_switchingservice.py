@@ -68,8 +68,8 @@ def test_available_switching_services_excludes_subscribed_and_requires_subscribe
 def test_switchingservice_description_uses_product_name_and_service_name() -> None:
     switchingservice_description = description.dispatch(SwitchingServiceProvisioning)
     stub = SimpleNamespace(
-        product=SimpleNamespace(name="switchingservice"),
+        product=SimpleNamespace(tag="SWITCHINGSERVICE"),
         switchingservice=SimpleNamespace(switching_service_name="Core SS"),
     )
 
-    assert switchingservice_description(stub) == "switchingservice Core SS"
+    assert switchingservice_description(stub) == "SWITCHINGSERVICE Core SS"
