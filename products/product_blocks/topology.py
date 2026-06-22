@@ -22,20 +22,16 @@ class TopologyBlockInactive(ProductBlockModel, product_block_name="Topology"):
     topology_name: str | None = None
 
 
-class TopologyBlockProvisioning(
-    TopologyBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]
-):
+class TopologyBlockProvisioning(TopologyBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
     topology_id: str
     topology_name: str
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"{self.name} {self.topology_id}"
+        return f"{self.name} {self.topology_id.removeprefix('urn:ogf:network:')}"
 
 
-class TopologyBlock(
-    TopologyBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]
-):
+class TopologyBlock(TopologyBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
     topology_id: str
     topology_name: str

@@ -18,7 +18,7 @@ from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import terminate_workflow
 from pydantic_forms.types import InputForm, State, UUIDstr
 
-from products.product_types.topology import Topology
+from products.product_types.switchingservice import SwitchingService
 
 logger = structlog.get_logger(__name__)
 
@@ -26,24 +26,23 @@ logger = structlog.get_logger(__name__)
 def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id: UUIDstr) -> InputForm:
     temp_subscription_id = subscription_id
 
-    class TerminateTopologyForm(FormPage):
+    class TerminateSwitchingServiceForm(FormPage):
         subscription_id: DisplaySubscription = temp_subscription_id  # type: ignore[assignment]
 
-    return TerminateTopologyForm
+    return TerminateSwitchingServiceForm
 
 
-@step("Terminate topology subscription")
-def terminate_topology_subscription(subscription: Topology) -> State:
-    # The DDS is the authoritative, read-only source of topologies. Terminating only removes the
-    # orchestrator's subscription; there is nothing to deprovision in an external system.
+@step("Terminate switching service subscription")
+def terminate_switchingservice_subscription(subscription: SwitchingService) -> State:
+    # DDS is read-only, so there is nothing to deprovision; just drop the subscription.
     logger.info(
-        "Terminating topology subscription",
-        topology_id=subscription.topology.topology_id,
+        "Terminating switching service subscription",
+        switching_service_id=subscription.switchingservice.switching_service_id,
     )
 
     return {}
 
 
 @terminate_workflow(initial_input_form=terminate_initial_input_form_generator)
-def terminate_topology() -> StepList:
-    return begin >> terminate_topology_subscription
+def terminate_switchingservice() -> StepList:
+    return begin >> terminate_switchingservice_subscription

@@ -29,9 +29,7 @@ class Settings(BaseSettings):
     dds_proxy_mtls_enabled: bool = False
     dds_proxy_client_cert: str | None = None  # path to the PEM client certificate
     dds_proxy_client_key: str | None = None  # path to the PEM private key
-    dds_proxy_ca_bundle: str | None = (
-        None  # path to a CA bundle used to verify the server
-    )
+    dds_proxy_ca_bundle: str | None = None  # path to a CA bundle used to verify the server
 
     # Local-development shortcut, used ONLY when mTLS is disabled. The dds-proxy trusts the
     # edge identity headers; these fake the mTLS auth path (X-Auth-Method is the proxy's

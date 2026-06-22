@@ -1,14 +1,21 @@
 {
     "forms": {
         "fields": {
+            "switching_service_id": "Switching service",
+            "switching_service_id_info": "Select the switching service to create a subscription for",
+            "switching_service_name": "Switching service name",
             "topology": "Topology",
             "topology_info": "Select the topology to create a subscription for"
         }
     },
     "workflow": {
+        "create_switchingservice": "Create switching service",
         "create_topology": "Create topology",
+        "modify_switchingservice": "Modify switching service",
         "modify_topology": "Modify topology",
+        "terminate_switchingservice": "Terminate switching service",
         "terminate_topology": "Terminate topology",
+        "validate_switchingservice": "Validate switching service",
         "validate_topology": "Validate topology"
     }
 }

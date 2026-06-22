@@ -15,20 +15,20 @@
 from orchestrator.core.domain.base import SubscriptionModel
 from orchestrator.core.types import SubscriptionLifecycle
 
-from products.product_blocks.topology import (
-    TopologyBlock,
-    TopologyBlockInactive,
-    TopologyBlockProvisioning,
+from products.product_blocks.switchingservice import (
+    SwitchingServiceBlock,
+    SwitchingServiceBlockInactive,
+    SwitchingServiceBlockProvisioning,
 )
 
 
-class TopologyInactive(SubscriptionModel, is_base=True):
-    topology: TopologyBlockInactive
+class SwitchingServiceInactive(SubscriptionModel, is_base=True):
+    switchingservice: SwitchingServiceBlockInactive
 
 
-class TopologyProvisioning(TopologyInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
-    topology: TopologyBlockProvisioning
+class SwitchingServiceProvisioning(SwitchingServiceInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
+    switchingservice: SwitchingServiceBlockProvisioning
 
 
-class Topology(TopologyProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
-    topology: TopologyBlock
+class SwitchingService(SwitchingServiceProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
+    switchingservice: SwitchingServiceBlock

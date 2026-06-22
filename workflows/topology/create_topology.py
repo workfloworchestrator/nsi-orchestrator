@@ -32,12 +32,6 @@ logger = structlog.get_logger(__name__)
 def initial_input_form_generator(product_name: str) -> FormGenerator:
     # Offer the topologies known to the dds-proxy that do not yet have a subscription.
     topologies = available_topologies()
-    if not topologies:
-        raise ValueError(
-            "No topologies available to subscribe to: every topology known to the dds-proxy "
-            "already has a subscription."
-        )
-
     topology_name_by_id = {topology.id: topology.name for topology in topologies}
     TopologyChoice = topology_selector(topologies)
 
@@ -52,9 +46,7 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
     topology_name = topology_name_by_id[topology_id]
 
     summary_data = {"topology_id": topology_id, "topology_name": topology_name}
-    yield from create_summary_form(
-        summary_data, product_name, ["topology_id", "topology_name"]
-    )
+    yield from create_summary_form(summary_data, product_name, ["topology_id", "topology_name"])
 
     # No CRM for this orchestrator: use orchestrator-core's configurable default customer
     # (override with the DEFAULT_CUSTOMER_IDENTIFIER env var) instead of asking on the form.
@@ -80,9 +72,7 @@ def construct_topology_model(
     topology.topology.topology_id = topology_id
     topology.topology.topology_name = topology_name
 
-    topology = TopologyProvisioning.from_other_lifecycle(
-        topology, SubscriptionLifecycle.PROVISIONING
-    )
+    topology = TopologyProvisioning.from_other_lifecycle(topology, SubscriptionLifecycle.PROVISIONING)
     topology.description = description(topology)
 
     return {
@@ -95,8 +85,6 @@ def construct_topology_model(
 additional_steps = begin
 
 
-@create_workflow(
-    initial_input_form=initial_input_form_generator, additional_steps=additional_steps
-)
+@create_workflow(initial_input_form=initial_input_form_generator, additional_steps=additional_steps)
 def create_topology() -> StepList:
     return begin >> construct_topology_model >> store_process_subscription()

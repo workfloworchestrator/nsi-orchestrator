@@ -16,23 +16,26 @@ from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
 
-from products.product_types.topology import Topology
-from services.dds_proxy import fetch_topologies
+from products.product_types.switchingservice import SwitchingService
+from services.dds_proxy import fetch_switching_services
 
 logger = structlog.get_logger(__name__)
 
 
-@step("Validate topology is still present in the DDS")
-def validate_topology_present_in_dds(subscription: Topology) -> State:
-    """Assert the subscription's topology_id is still advertised by the dds-proxy."""
-    topology_id = subscription.topology.topology_id
-    known_topology_ids = {topology.id for topology in fetch_topologies()}
-    if topology_id not in known_topology_ids:
-        raise AssertionError(f"Topology {topology_id} is no longer present in the dds-proxy /topologies endpoint")
+@step("Validate switching service is still present in the DDS")
+def validate_switchingservice_present_in_dds(subscription: SwitchingService) -> State:
+    """Assert the subscription's switching_service_id is still advertised by the dds-proxy."""
+    switching_service_id = subscription.switchingservice.switching_service_id
+    known_ids = {service.id for service in fetch_switching_services()}
+    if switching_service_id not in known_ids:
+        raise AssertionError(
+            f"Switching service {switching_service_id} is no longer present in the dds-proxy "
+            "/switching-services endpoint"
+        )
 
     return {"subscription": subscription}
 
 
 @validate_workflow()
-def validate_topology() -> StepList:
-    return begin >> validate_topology_present_in_dds
+def validate_switchingservice() -> StepList:
+    return begin >> validate_switchingservice_present_in_dds
