@@ -43,16 +43,12 @@ def summary_form(product_name: str, summary_data: dict) -> Generator:
     yield SummaryForm
 
 
-def create_summary_form(
-    user_input: dict, product_name: str, fields: list[str]
-) -> Generator:
+def create_summary_form(user_input: dict, product_name: str, fields: list[str]) -> Generator:
     columns = [[str(user_input[nm]) for nm in fields]]
     yield from summary_form(product_name, {"labels": fields, "columns": columns})
 
 
-def modify_summary_form(
-    user_input: dict, block: ProductBlockModel, fields: list[str]
-) -> Generator:
+def modify_summary_form(user_input: dict, block: ProductBlockModel, fields: list[str]) -> Generator:
     before = [str(getattr(block, nm)) for nm in fields]
     after = [str(user_input[nm]) for nm in fields]
     yield from summary_form(
@@ -72,8 +68,7 @@ def _value_select(column: Any, product_type: str, resource_type: str) -> Select:
         .select_from(SubscriptionInstanceValueTable)
         .join(
             ResourceTypeTable,
-            SubscriptionInstanceValueTable.resource_type_id
-            == ResourceTypeTable.resource_type_id,
+            SubscriptionInstanceValueTable.resource_type_id == ResourceTypeTable.resource_type_id,
         )
         .join(
             SubscriptionInstanceTable,
@@ -82,8 +77,7 @@ def _value_select(column: Any, product_type: str, resource_type: str) -> Select:
         )
         .join(
             SubscriptionTable,
-            SubscriptionInstanceTable.subscription_id
-            == SubscriptionTable.subscription_id,
+            SubscriptionInstanceTable.subscription_id == SubscriptionTable.subscription_id,
         )
         .join(ProductTable, SubscriptionTable.product_id == ProductTable.product_id)
         .where(ProductTable.product_type == product_type)
@@ -94,21 +88,13 @@ def _value_select(column: Any, product_type: str, resource_type: str) -> Select:
 
 def subscribed_values(product_type: str, resource_type: str) -> set[str]:
     """Return the ``resource_type`` values across non-terminated ``product_type`` subscriptions."""
-    return set(
-        db.session.scalars(
-            _value_select(
-                SubscriptionInstanceValueTable.value, product_type, resource_type
-            )
-        )
-    )
+    return set(db.session.scalars(_value_select(SubscriptionInstanceValueTable.value, product_type, resource_type)))
 
 
-def subscription_id_for_value(
-    product_type: str, resource_type: str, value: str
-) -> UUID | None:
+def subscription_id_for_value(product_type: str, resource_type: str, value: str) -> UUID | None:
     """Return the subscription id whose ``resource_type`` equals ``value`` (first match), or None."""
-    query = _value_select(
-        SubscriptionTable.subscription_id, product_type, resource_type
-    ).where(SubscriptionInstanceValueTable.value == value)
+    query = _value_select(SubscriptionTable.subscription_id, product_type, resource_type).where(
+        SubscriptionInstanceValueTable.value == value
+    )
     result: UUID | None = db.session.scalars(query).first()
     return result

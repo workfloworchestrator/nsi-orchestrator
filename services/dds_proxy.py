@@ -64,9 +64,7 @@ class DdsSwitchingService(BaseModel):
     The proxy serialises with camelCase aliases (``topologyId``); only the needed fields are kept.
     """
 
-    model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="ignore"
-    )
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
 
     id: str
     topology_id: str

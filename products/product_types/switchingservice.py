@@ -26,13 +26,9 @@ class SwitchingServiceInactive(SubscriptionModel, is_base=True):
     switchingservice: SwitchingServiceBlockInactive
 
 
-class SwitchingServiceProvisioning(
-    SwitchingServiceInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]
-):
+class SwitchingServiceProvisioning(SwitchingServiceInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
     switchingservice: SwitchingServiceBlockProvisioning
 
 
-class SwitchingService(
-    SwitchingServiceProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]
-):
+class SwitchingService(SwitchingServiceProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
     switchingservice: SwitchingServiceBlock

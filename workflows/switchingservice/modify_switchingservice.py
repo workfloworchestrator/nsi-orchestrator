@@ -42,17 +42,13 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     user_input_dict: State = user_input.model_dump()
 
     summary_fields = ["switching_service_id", "switching_service_name"]
-    yield from modify_summary_form(
-        user_input_dict, subscription.switchingservice, summary_fields
-    )
+    yield from modify_summary_form(user_input_dict, subscription.switchingservice, summary_fields)
 
     return user_input_dict | {"subscription": subscription}
 
 
 @step("Update subscription")
-def update_subscription(
-    subscription: SwitchingServiceProvisioning, switching_service_name: str
-) -> State:
+def update_subscription(subscription: SwitchingServiceProvisioning, switching_service_name: str) -> State:
     subscription.switchingservice.switching_service_name = switching_service_name
     return {"subscription": subscription}
 
@@ -66,9 +62,7 @@ def update_subscription_description(subscription: SwitchingService) -> State:
 additional_steps = begin
 
 
-@modify_workflow(
-    initial_input_form=initial_input_form_generator, additional_steps=additional_steps
-)
+@modify_workflow(initial_input_form=initial_input_form_generator, additional_steps=additional_steps)
 def modify_switchingservice() -> StepList:
     return (
         begin

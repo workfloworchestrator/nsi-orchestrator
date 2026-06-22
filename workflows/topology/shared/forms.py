@@ -29,15 +29,11 @@ def subscribed_topology_ids() -> set[str]:
 def available_topologies() -> list[DdsTopology]:
     """Return the dds-proxy topologies that do not yet have a subscription."""
     subscribed = subscribed_topology_ids()
-    return [
-        topology for topology in fetch_topologies() if topology.id not in subscribed
-    ]
+    return [topology for topology in fetch_topologies() if topology.id not in subscribed]
 
 
 def topology_selector(topologies: list[DdsTopology]) -> type[Choice]:
     """Build a dropdown of ``topologies``, keyed by ``topology_id`` and labelled ``name (id)``."""
-    options = {
-        topology.id: f"{topology.name} ({topology.id})" for topology in topologies
-    }
+    options = {topology.id: f"{topology.name} ({topology.id})" for topology in topologies}
     choices = Choice("TopologyChoice", zip(options.keys(), options.items()))  # type: ignore[arg-type]
     return cast("type[Choice]", choices)

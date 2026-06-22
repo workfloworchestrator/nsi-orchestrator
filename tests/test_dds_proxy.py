@@ -45,9 +45,7 @@ def test_client_kwargs_dev_headers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dds_proxy.settings, "dds_proxy_auth_method", "x509")
     monkeypatch.setattr(dds_proxy.settings, "dds_proxy_client_dn", "CN=test")
 
-    assert dds_proxy._client_kwargs() == {
-        "headers": {"X-Auth-Method": "x509", "X-Client-DN": "CN=test"}
-    }
+    assert dds_proxy._client_kwargs() == {"headers": {"X-Auth-Method": "x509", "X-Client-DN": "CN=test"}}
 
 
 @pytest.mark.parametrize(

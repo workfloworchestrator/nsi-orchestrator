@@ -23,17 +23,13 @@ from products.product_blocks.topology import (
 )
 
 
-class SwitchingServiceBlockInactive(
-    ProductBlockModel, product_block_name="SwitchingService"
-):
+class SwitchingServiceBlockInactive(ProductBlockModel, product_block_name="SwitchingService"):
     switching_service_id: str | None = None
     switching_service_name: str | None = None
     topology: TopologyBlockInactive | None = None
 
 
-class SwitchingServiceBlockProvisioning(
-    SwitchingServiceBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]
-):
+class SwitchingServiceBlockProvisioning(SwitchingServiceBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
     switching_service_id: str
     switching_service_name: str
     topology: TopologyBlockProvisioning
@@ -44,9 +40,7 @@ class SwitchingServiceBlockProvisioning(
         return f"{self.name} {self.switching_service_id}"
 
 
-class SwitchingServiceBlock(
-    SwitchingServiceBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]
-):
+class SwitchingServiceBlock(SwitchingServiceBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
     switching_service_id: str
     switching_service_name: str
     topology: TopologyBlock

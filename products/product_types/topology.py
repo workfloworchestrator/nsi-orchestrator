@@ -26,9 +26,7 @@ class TopologyInactive(SubscriptionModel, is_base=True):
     topology: TopologyBlockInactive
 
 
-class TopologyProvisioning(
-    TopologyInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]
-):
+class TopologyProvisioning(TopologyInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
     topology: TopologyBlockProvisioning
 
 

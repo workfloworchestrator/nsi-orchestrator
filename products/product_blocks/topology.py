@@ -22,9 +22,7 @@ class TopologyBlockInactive(ProductBlockModel, product_block_name="Topology"):
     topology_name: str | None = None
 
 
-class TopologyBlockProvisioning(
-    TopologyBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]
-):
+class TopologyBlockProvisioning(TopologyBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
     topology_id: str
     topology_name: str
 
@@ -34,8 +32,6 @@ class TopologyBlockProvisioning(
         return f"{self.name} {self.topology_id}"
 
 
-class TopologyBlock(
-    TopologyBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]
-):
+class TopologyBlock(TopologyBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
     topology_id: str
     topology_name: str

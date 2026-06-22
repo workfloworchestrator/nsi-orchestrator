@@ -96,8 +96,6 @@ def construct_switchingservice_model(
 additional_steps = begin
 
 
-@create_workflow(
-    initial_input_form=initial_input_form_generator, additional_steps=additional_steps
-)
+@create_workflow(initial_input_form=initial_input_form_generator, additional_steps=additional_steps)
 def create_switchingservice() -> StepList:
     return begin >> construct_switchingservice_model >> store_process_subscription()

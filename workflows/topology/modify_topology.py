@@ -39,9 +39,7 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     user_input_dict: State = user_input.model_dump()
 
     summary_fields = ["topology_id", "topology_name"]
-    yield from modify_summary_form(
-        user_input_dict, subscription.topology, summary_fields
-    )
+    yield from modify_summary_form(user_input_dict, subscription.topology, summary_fields)
 
     return user_input_dict | {"subscription": subscription}
 
@@ -65,9 +63,7 @@ def update_subscription_description(subscription: Topology) -> State:
 additional_steps = begin
 
 
-@modify_workflow(
-    initial_input_form=initial_input_form_generator, additional_steps=additional_steps
-)
+@modify_workflow(initial_input_form=initial_input_form_generator, additional_steps=additional_steps)
 def modify_topology() -> StepList:
     return (
         begin

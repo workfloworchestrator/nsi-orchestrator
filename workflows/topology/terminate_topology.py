@@ -23,9 +23,7 @@ from products.product_types.topology import Topology
 logger = structlog.get_logger(__name__)
 
 
-def terminate_initial_input_form_generator(
-    subscription_id: UUIDstr, customer_id: UUIDstr
-) -> InputForm:
+def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id: UUIDstr) -> InputForm:
     temp_subscription_id = subscription_id
 
     class TerminateTopologyForm(FormPage):

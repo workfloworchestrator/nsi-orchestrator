@@ -40,9 +40,7 @@ def test_dds_switchingservice_parses_camelcase_topology_id() -> None:
 
 
 def test_switchingservice_selector_keys_and_labels_by_id() -> None:
-    enum = forms.switchingservice_selector(
-        [DdsSwitchingService(id="a", topology_id="t1")]
-    )
+    enum = forms.switchingservice_selector([DdsSwitchingService(id="a", topology_id="t1")])
 
     assert {member.value: member.label for member in enum} == {"a": "a"}
 
@@ -59,12 +57,8 @@ def test_available_switching_services_excludes_subscribed_and_requires_subscribe
         "fetch_switching_services",
         lambda: [
             DdsSwitchingService(id="ss-x", topology_id="topo-1"),  # already subscribed
-            DdsSwitchingService(
-                id="ss-y", topology_id="topo-1"
-            ),  # topology subscribed -> offered
-            DdsSwitchingService(
-                id="ss-z", topology_id="topo-2"
-            ),  # topology not subscribed
+            DdsSwitchingService(id="ss-y", topology_id="topo-1"),  # topology subscribed -> offered
+            DdsSwitchingService(id="ss-z", topology_id="topo-2"),  # topology not subscribed
         ],
     )
 
