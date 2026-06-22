@@ -1,0 +1,33 @@
+config:
+  summary_forms: true
+name: stp
+type: ServiceTerminationPoint
+tag: STP
+description: "Network Service Interface service termination point"
+product_blocks:
+  - name: stp
+    type: ServiceTerminationPoint
+    tag: STP
+    description: "Service termination point product block"
+    fields:
+      - name: stp_id
+        description: "Unique NSI service termination point identifier"
+        type: str
+        required: provisioning
+      - name: stp_name
+        description: "Service termination point name"
+        type: str
+        required: provisioning
+        modifiable: true
+      - name: capacity
+        description: "The capacity of this service termination point"
+        type: int
+        required: provisioning
+      - name: label_group
+        description: "The set of allowed labels for this service termination point"
+        type: str
+        required: provisioning
+      - name: switching_service
+        description: "Switching service this service termination point is part of"
+        type: SwitchingService
+        required: provisioning

@@ -37,7 +37,7 @@ class SwitchingServiceBlockProvisioning(SwitchingServiceBlockInactive, lifecycle
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"SW {self.switching_service_id.removeprefix('urn:ogf:network:')}"
+        return f"sw {self.switching_service_id.removeprefix('urn:ogf:network:')}"
 
 
 class SwitchingServiceBlock(SwitchingServiceBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
