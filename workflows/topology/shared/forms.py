@@ -15,46 +15,15 @@
 
 from typing import cast
 
-from orchestrator.core.db import (
-    ProductTable,
-    ResourceTypeTable,
-    SubscriptionInstanceTable,
-    SubscriptionInstanceValueTable,
-    SubscriptionTable,
-    db,
-)
-from orchestrator.core.types import SubscriptionLifecycle
 from pydantic_forms.validators import Choice
-from sqlalchemy import select
 
 from services.dds_proxy import DdsTopology, fetch_topologies
+from workflows.shared import subscribed_values
 
 
 def subscribed_topology_ids() -> set[str]:
     """Return the ``topology_id`` values that already have a non-terminated Topology subscription."""
-    query = (
-        select(SubscriptionInstanceValueTable.value)
-        .join(
-            ResourceTypeTable,
-            SubscriptionInstanceValueTable.resource_type_id
-            == ResourceTypeTable.resource_type_id,
-        )
-        .join(
-            SubscriptionInstanceTable,
-            SubscriptionInstanceValueTable.subscription_instance_id
-            == SubscriptionInstanceTable.subscription_instance_id,
-        )
-        .join(
-            SubscriptionTable,
-            SubscriptionInstanceTable.subscription_id
-            == SubscriptionTable.subscription_id,
-        )
-        .join(ProductTable, SubscriptionTable.product_id == ProductTable.product_id)
-        .where(ProductTable.product_type == "Topology")
-        .where(ResourceTypeTable.resource_type == "topology_id")
-        .where(SubscriptionTable.status != SubscriptionLifecycle.TERMINATED)
-    )
-    return set(db.session.scalars(query))
+    return subscribed_values("Topology", "topology_id")
 
 
 def available_topologies() -> list[DdsTopology]:

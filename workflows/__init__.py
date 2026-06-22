@@ -17,3 +17,17 @@ LazyWorkflowInstance("workflows.topology.create_topology", "create_topology")
 LazyWorkflowInstance("workflows.topology.modify_topology", "modify_topology")
 LazyWorkflowInstance("workflows.topology.terminate_topology", "terminate_topology")
 LazyWorkflowInstance("workflows.topology.validate_topology", "validate_topology")
+
+LazyWorkflowInstance(
+    "workflows.switchingservice.create_switchingservice", "create_switchingservice"
+)
+LazyWorkflowInstance(
+    "workflows.switchingservice.modify_switchingservice", "modify_switchingservice"
+)
+LazyWorkflowInstance(
+    "workflows.switchingservice.terminate_switchingservice",
+    "terminate_switchingservice",
+)
+LazyWorkflowInstance(
+    "workflows.switchingservice.validate_switchingservice", "validate_switchingservice"
+)

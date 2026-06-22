@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 import structlog
 from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 from settings import settings
 
@@ -57,6 +58,20 @@ class DdsTopology(BaseModel):
     name: str
 
 
+class DdsSwitchingService(BaseModel):
+    """A switching service from the dds-proxy ``GET /switching-services`` endpoint.
+
+    The proxy serialises with camelCase aliases (``topologyId``); only the needed fields are kept.
+    """
+
+    model_config = ConfigDict(
+        alias_generator=to_camel, populate_by_name=True, extra="ignore"
+    )
+
+    id: str
+    topology_id: str
+
+
 def _client_kwargs() -> dict[str, Any]:
     """Build the httpx client arguments for the configured authentication mode."""
     if settings.dds_proxy_mtls_enabled:
@@ -76,8 +91,8 @@ def _client_kwargs() -> dict[str, Any]:
     }
 
 
-def fetch_topologies() -> list[DdsTopology]:
-    """Return all topologies known to the dds-proxy.
+def _fetch(path: str) -> list[dict[str, Any]]:
+    """GET ``path`` from the dds-proxy and return the decoded JSON list.
 
     Raises:
         DdsProxyError: when the proxy cannot be reached or returns an error response.
@@ -88,18 +103,29 @@ def fetch_topologies() -> list[DdsTopology]:
         **_client_kwargs(),
     ) as client:
         try:
-            response = client.get("/topologies")
+            response = client.get(path)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.warning(
-                "dds-proxy /topologies request failed",
+                "dds-proxy request failed",
+                path=path,
                 base_url=settings.dds_proxy_base_url,
                 error=str(exc),
             )
-            # Suppress the httpx/httpcore exception chain: the cause (e.g. "Connection refused")
-            # is already folded into the message, and the chain only adds noise to the logs.
+            # Suppress the httpx/httpcore chain: the cause is already folded into the message.
             raise DdsProxyError(
-                f"Could not fetch topologies from dds-proxy at {settings.dds_proxy_base_url}: {exc}"
+                f"Could not fetch {path} from dds-proxy at {settings.dds_proxy_base_url}: {exc}"
             ) from None
 
-        return [DdsTopology.model_validate(item) for item in response.json()]
+        data: list[dict[str, Any]] = response.json()
+        return data
+
+
+def fetch_topologies() -> list[DdsTopology]:
+    """Return all topologies known to the dds-proxy."""
+    return [DdsTopology.model_validate(item) for item in _fetch("/topologies")]
+
+
+def fetch_switching_services() -> list[DdsSwitchingService]:
+    """Return all switching services known to the dds-proxy."""
+    return [DdsSwitchingService.model_validate(item) for item in _fetch("/switching-services")]

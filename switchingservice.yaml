@@ -1,0 +1,25 @@
+config:
+  summary_forms: true
+name: switchingservice
+type: SwitchingService
+tag: SWITCHINGSERVICE
+description: "Network Service Interface switching service"
+product_blocks:
+  - name: switchingservice
+    type: SwitchingService
+    tag: SWITCHINGSERVICE
+    description: "Switching service product block"
+    fields:
+      - name: switching_service_id
+        description: "Unique NSI switching service identifier"
+        type: str
+        required: provisioning
+      - name: switching_service_name
+        description: "Switching service name"
+        type: str
+        required: provisioning
+        modifiable: true
+      - name: topology
+        description: "Topology this switching service is part of"
+        type: Topology
+        required: provisioning

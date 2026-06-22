@@ -32,12 +32,6 @@ logger = structlog.get_logger(__name__)
 def initial_input_form_generator(product_name: str) -> FormGenerator:
     # Offer the topologies known to the dds-proxy that do not yet have a subscription.
     topologies = available_topologies()
-    if not topologies:
-        raise ValueError(
-            "No topologies available to subscribe to: every topology known to the dds-proxy "
-            "already has a subscription."
-        )
-
     topology_name_by_id = {topology.id: topology.name for topology in topologies}
     TopologyChoice = topology_selector(topologies)
 
