@@ -30,21 +30,21 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
 
     class ModifyMultiDomainPoint2PointForm(FormPage):
-        description: str = subscription.vc.description
+        circuit_description: str = subscription.vc.circuit_description
 
     user_input = yield ModifyMultiDomainPoint2PointForm
     user_input_dict: State = user_input.model_dump()
 
-    summary_fields = ["description"]
+    summary_fields = ["circuit_description"]
     yield from modify_summary_form(user_input_dict, subscription.vc, summary_fields)
 
     return user_input_dict | {"subscription": subscription}
 
 
 @step("Update subscription")
-def update_subscription(subscription: MultiDomainPoint2PointProvisioning, description: str) -> State:
+def update_subscription(subscription: MultiDomainPoint2PointProvisioning, circuit_description: str) -> State:
     # Local label only; the description sent to the aggregator at reserve time is not changed.
-    subscription.vc.description = description
+    subscription.vc.circuit_description = circuit_description
     return {"subscription": subscription}
 
 

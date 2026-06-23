@@ -54,7 +54,7 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
     class CreateMultiDomainPoint2PointForm(FormPage):
         model_config = ConfigDict(title=product_name)
 
-        description: str
+        circuit_description: str
         service_speed: int
 
         endpoints: Divider
@@ -82,10 +82,10 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
             return self
 
     user_input = yield CreateMultiDomainPoint2PointForm
-    user_input_dict = user_input.model_dump()
+    user_input_dict: State = user_input.model_dump()
 
     summary_fields = [
-        "description",
+        "circuit_description",
         "service_speed",
         "source_stp",
         "source_vlan",
@@ -94,24 +94,14 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
     ]
     yield from create_summary_form(user_input_dict, product_name, summary_fields)
 
-    return {
-        "customer_id": app_settings.DEFAULT_CUSTOMER_IDENTIFIER,
-        "vc_description": user_input_dict["description"],
-        "service_speed": user_input_dict["service_speed"],
-        "source_stp": user_input_dict["source_stp"],
-        "source_vlan": user_input_dict["source_vlan"],
-        "destination_stp": user_input_dict["destination_stp"],
-        "destination_vlan": user_input_dict["destination_vlan"],
-        "include_sdps": user_input_dict["include_sdps"],
-        "exclude_sdps": user_input_dict["exclude_sdps"],
-    }
+    return {"customer_id": app_settings.DEFAULT_CUSTOMER_IDENTIFIER} | user_input_dict
 
 
 @step("Construct Subscription model")
 def construct_mdp2p_model(
     product: UUIDstr,
     customer_id: UUIDstr,
-    vc_description: str,
+    circuit_description: str,
     service_speed: int,
     source_stp: str,
     source_vlan: int,
@@ -128,7 +118,7 @@ def construct_mdp2p_model(
     subscription_id = mdp2p.subscription_id
 
     vc = mdp2p.vc
-    vc.description = vc_description
+    vc.circuit_description = circuit_description
     vc.service_speed = service_speed
     vc.state = ConnectionState.CREATED
     # The orchestrator generates the global reservation id; the aggregator assigns the connection id.
@@ -169,7 +159,7 @@ def reserve_connection(subscription: MultiDomainPoint2PointProvisioning, callbac
     source, destination = vc.saps
     connection_id = aggregator_proxy.reserve(
         global_reservation_id=vc.global_reservation_id,
-        description=vc.description,
+        description=vc.circuit_description,
         capacity=vc.service_speed,
         source_stp=f"{source.stp.stp_id}?vlan={source.label}",
         dest_stp=f"{destination.stp.stp_id}?vlan={destination.label}",

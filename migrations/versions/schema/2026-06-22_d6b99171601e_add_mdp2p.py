@@ -80,7 +80,7 @@ new_products = {
             "tag": "VC",
             "status": "active",
             "resources": {
-                "description": "Virtual circuit description",
+                "circuit_description": "Virtual circuit description",
                 "service_speed": "Speed of the service",
                 "state": "Virtual circuit reservation state",
                 "global_reservation_id": "Orchestrator-generated global reservation id (urn:uuid:...)",

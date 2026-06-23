@@ -64,7 +64,7 @@ The diagram below shows the ANA-GRAM automation stack and how the NSI Orchestrat
 classDiagram
     namespace MDP2P {
         class VirtualCircuitBlock {
-            +description
+            +circuit_description
             +saps
             +service_speed
             +sdp_constraints
@@ -156,7 +156,7 @@ aggregator POSTs the result back to a `callback_step`.
   generated global reservation id; the state ends up `RESERVED` or `FAILED`.
 - **Provision** — `RESERVED → ACTIVATED` via `POST /reservations/{connectionId}/provision`.
 - **Release** — `ACTIVATED → RESERVED` via `POST /reservations/{connectionId}/release`.
-- **Modify** — edit the local virtual circuit `description` (not pushed to the aggregator).
+- **Modify** — edit the local virtual circuit `circuit_description` (not pushed to the aggregator).
 - **Validate** — assert the connection's stored capacity, STPs, VLANs, global reservation id and
   state still match `GET /reservations/{connectionId}`.
 - **Terminate** — `RESERVED` or `FAILED` → `TERMINATED` via `DELETE /reservations/{connectionId}`.

@@ -28,11 +28,11 @@ def test_topology_is_registered() -> None:
     assert TopologyProvisioning in description.registry
 
 
-def test_mdp2p_description_uses_product_tag_and_vc_description() -> None:
+def test_mdp2p_description_uses_product_tag_and_circuit_description() -> None:
     mdp2p_description = description.dispatch(MultiDomainPoint2PointProvisioning)
     stub = SimpleNamespace(
         product=SimpleNamespace(tag="MDP2P"),
-        vc=SimpleNamespace(description="Amsterdam to Geneva"),
+        vc=SimpleNamespace(circuit_description="Amsterdam to Geneva"),
     )
 
     assert mdp2p_description(stub) == "MDP2P Amsterdam to Geneva"

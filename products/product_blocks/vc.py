@@ -35,7 +35,7 @@ ListOfSdp_constraints = Annotated[list[SI], Len(min_length=0)]
 
 
 class VirtualCircuitBlockInactive(ProductBlockModel, product_block_name="VirtualCircuit"):
-    description: str | None = None  # type: ignore[misc, assignment]  # shadows ProductBlockModel.description ClassVar
+    circuit_description: str | None = None
     service_speed: int | None = None
     saps: ListOfSaps[ServiceAccessPointBlockInactive]
     sdp_constraints: ListOfSdp_constraints[SdpConstraintBlockInactive]
@@ -45,7 +45,7 @@ class VirtualCircuitBlockInactive(ProductBlockModel, product_block_name="Virtual
 
 
 class VirtualCircuitBlockProvisioning(VirtualCircuitBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
-    description: str  # type: ignore[misc]  # shadows ProductBlockModel.description ClassVar
+    circuit_description: str
     service_speed: int
     saps: ListOfSaps[ServiceAccessPointBlockProvisioning]  # type: ignore[assignment]
     sdp_constraints: ListOfSdp_constraints[SdpConstraintBlockProvisioning]  # type: ignore[assignment]
@@ -56,11 +56,11 @@ class VirtualCircuitBlockProvisioning(VirtualCircuitBlockInactive, lifecycle=[Su
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"vc {self.description}"
+        return f"vc {self.circuit_description}"
 
 
 class VirtualCircuitBlock(VirtualCircuitBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
-    description: str  # type: ignore[misc]  # shadows ProductBlockModel.description ClassVar
+    circuit_description: str
     service_speed: int
     saps: ListOfSaps[ServiceAccessPointBlock]  # type: ignore[assignment]
     sdp_constraints: ListOfSdp_constraints[SdpConstraintBlock]  # type: ignore[assignment]

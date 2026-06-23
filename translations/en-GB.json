@@ -3,7 +3,7 @@
         "fields": {
             "allow_stps_in_sdp": "Allow STPs that are part of an SDP",
             "capacity": "Capacity",
-            "description": "Description",
+            "circuit_description": "Description",
             "destination_stp": "Destination STP",
             "destination_vlan": "Destination VLAN",
             "exclude_sdps": "SDPs to exclude from the path",

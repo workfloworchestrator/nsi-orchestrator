@@ -40,7 +40,7 @@ product_blocks:
     tag: VC
     description: "Virtual circuit product block"
     fields:
-      - name: description
+      - name: circuit_description
         type: str
         description: "Virtual circuit description"
         required: provisioning
