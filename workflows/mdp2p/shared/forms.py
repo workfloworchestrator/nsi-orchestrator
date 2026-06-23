@@ -127,12 +127,11 @@ def stp_selector(
 
 
 def subscribed_sdp_options() -> dict[str, str]:
-    """Map each SDP subscription id to a label naming its two STP ids."""
-    options = {}
-    for sid in subscription_ids_for_product_type("ServiceDemarcationPoint"):
-        stp_a, stp_z = (stp.stp_id for stp in ServiceDemarcationPoint.from_subscription(sid).sdp.stps)
-        options[str(sid)] = f"{stp_a.removeprefix('urn:ogf:network:')} <-> {stp_z.removeprefix('urn:ogf:network:')}"
-    return options
+    """Map each SDP subscription id to its service demarcation point name."""
+    return {
+        str(sid): ServiceDemarcationPoint.from_subscription(sid).sdp.sdp_name
+        for sid in subscription_ids_for_product_type("ServiceDemarcationPoint")
+    }
 
 
 def sdp_selector(options: dict[str, str]) -> type[Choice]:
