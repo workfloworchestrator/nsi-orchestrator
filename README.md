@@ -150,10 +150,12 @@ operations itself; this state machine is the orchestrator's local view, persiste
 reserve, provision, release and terminate operations are asynchronous: each fires a request and the
 aggregator POSTs the result back to a `callback_step`.
 
-- **Create** — form for a description, source and destination STP (every subscribed STP is shown;
-  those already part of an SDP are labelled and gated behind a checkbox), their VLANs, the service
-  speed, and SDPs to include/exclude. Reserves the connection via `POST /reservations` with a freshly
-  generated global reservation id; the state ends up `RESERVED` or `FAILED`.
+- **Create** — form for a description, source/destination STP and VLAN, the service speed, and SDPs
+  to include/exclude. Each STP option is labelled with its still-free VLANs (its DDS range minus the
+  VLANs the aggregator reports in use), and STPs already part of an SDP are gated behind a checkbox;
+  each VLAN is validated against its STP (within range and not already in use). Reserves the
+  connection via `POST /reservations` with a freshly generated global reservation id; the state ends
+  up `RESERVED` or `FAILED`.
 - **Provision** — `RESERVED → ACTIVATED` via `POST /reservations/{connectionId}/provision`.
 - **Release** — `ACTIVATED → RESERVED` via `POST /reservations/{connectionId}/release`.
 - **Modify** — edit the local virtual circuit `circuit_description` (not pushed to the aggregator).
