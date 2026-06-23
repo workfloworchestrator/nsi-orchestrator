@@ -162,3 +162,9 @@ def get_reservation(connection_id: str) -> AggregatorReservation:
     """Return the current reservation detail for ``connection_id``."""
     response = _request("GET", f"/reservations/{connection_id}")
     return AggregatorReservation.model_validate(response.json())
+
+
+def list_reservations() -> list[AggregatorReservation]:
+    """Return all reservations the aggregator knows about."""
+    response = _request("GET", "/reservations")
+    return [AggregatorReservation.model_validate(item) for item in response.json()["reservations"]]

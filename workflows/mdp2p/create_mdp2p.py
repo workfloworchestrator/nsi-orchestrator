@@ -20,7 +20,7 @@ from orchestrator.core.types import SubscriptionLifecycle
 from orchestrator.core.workflow import StepList, begin, callback_step, step
 from orchestrator.core.workflows.steps import store_process_subscription
 from orchestrator.core.workflows.utils import create_workflow
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, ValidationInfo, field_validator, model_validator
 from pydantic_forms.types import FormGenerator, State, UUIDstr
 from pydantic_forms.validators import Divider, choice_list
 
@@ -39,16 +39,21 @@ from workflows.mdp2p.shared.forms import (
     stps_used_in_sdp,
     subscribed_sdp_options,
     subscribed_stps,
+    vlan_in_label_group,
+    vlans_in_use_by_stp,
 )
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
-from workflows.shared import create_summary_form
+from workflows.shared import create_summary_form, fetch_for_form
 
 logger = structlog.get_logger(__name__)
 
 
 def initial_input_form_generator(product_name: str) -> FormGenerator:
     used_in_sdp = stps_used_in_sdp()
-    ServiceTerminationPointChoice = stp_selector(subscribed_stps(), used_in_sdp)
+    stps = subscribed_stps()
+    label_group_by_id = {stp.stp_id: stp.label_group for stp in stps}
+    in_use_by_stp = fetch_for_form(vlans_in_use_by_stp)
+    ServiceTerminationPointChoice = stp_selector(stps, used_in_sdp, in_use_by_stp)
     ServiceDemarcationPointChoice = sdp_selector(subscribed_sdp_options())
 
     class CreateMultiDomainPoint2PointForm(FormPage):
@@ -70,6 +75,21 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
 
         include_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = []  # type: ignore[valid-type]
         exclude_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = []  # type: ignore[valid-type]
+
+        @field_validator("source_vlan", "destination_vlan")
+        @classmethod
+        def _vlan_within_stp_range(cls, vlan: int, info: ValidationInfo) -> int:
+            # source_vlan -> source_stp, destination_vlan -> destination_stp (defined before it).
+            assert info.field_name is not None
+            stp_id = info.data.get(info.field_name.replace("_vlan", "_stp"))
+            if stp_id is not None:
+                stp_id = str(stp_id)
+                label_group = label_group_by_id[stp_id]
+                if not vlan_in_label_group(vlan, label_group):
+                    raise ValueError(f"must be within the STP's VLAN range ({label_group})")
+                if vlan in in_use_by_stp.get(stp_id, set()):
+                    raise ValueError("is already in use on the selected STP")
+            return vlan
 
         @model_validator(mode="after")
         def _check_endpoints(self) -> "CreateMultiDomainPoint2PointForm":

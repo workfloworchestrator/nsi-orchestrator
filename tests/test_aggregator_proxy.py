@@ -21,7 +21,7 @@ import httpx
 import pytest
 
 from services import aggregator_proxy
-from services.aggregator_proxy import AggregatorProxyError, get_reservation, reserve
+from services.aggregator_proxy import AggregatorProxyError, get_reservation, list_reservations, reserve
 
 RESERVATION_JSON = {
     "globalReservationId": "urn:uuid:1234",
@@ -103,6 +103,22 @@ def test_get_reservation_parses_stp_aliases(monkeypatch: pytest.MonkeyPatch) -> 
     assert reservation.criteria is not None
     assert reservation.criteria.p2ps.source_stp == "urn:ogf:network:a?vlan=100"
     assert reservation.criteria.p2ps.dest_stp == "urn:ogf:network:b?vlan=200"
+
+
+def test_list_reservations_parses_each_item(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/reservations"
+        return httpx.Response(200, json={"reservations": [RESERVATION_JSON, RESERVATION_JSON]})
+
+    _install_mock_transport(monkeypatch, handler)
+
+    reservations = list_reservations()
+
+    assert [r.connection_id for r in reservations] == ["conn-1", "conn-1"]
+    assert all(
+        r.criteria is not None and r.criteria.p2ps.source_stp == "urn:ogf:network:a?vlan=100" for r in reservations
+    )
 
 
 def test_request_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
