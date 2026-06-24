@@ -33,6 +33,7 @@ from pydantic_forms.exceptions import FormValidationError
 from pydantic_i18n import PydanticI18n
 from sqlalchemy import Select, select
 
+from services.aggregator_proxy import AggregatorProxyError
 from services.dds_proxy import DdsProxyError
 
 T = TypeVar("T")
@@ -118,7 +119,7 @@ def subscription_ids_for_product_type(product_type: str) -> list[UUID]:
     return list(db.session.scalars(query))
 
 
-def _raise_form_validation_error(message: str) -> NoReturn:
+def raise_form_validation_error(message: str) -> NoReturn:
     """Raise a FormValidationError carrying ``message`` (rendered cleanly by the orchestrator UI)."""
 
     class _FormError(BaseModel):
@@ -134,12 +135,12 @@ def _raise_form_validation_error(message: str) -> NoReturn:
 
 
 def fetch_for_form(fetch: Callable[[], T]) -> T:
-    """Run a dds-proxy ``fetch`` while building an input form.
+    """Run a proxy ``fetch`` while building an input form.
 
-    Converts a ``DdsProxyError`` (e.g. the proxy is unavailable) into a ``FormValidationError`` so
-    the UI shows a clear message instead of a 500.
+    Converts a ``DdsProxyError`` / ``AggregatorProxyError`` (e.g. the proxy is unavailable) into a
+    ``FormValidationError`` so the UI shows a clear message instead of a 500.
     """
     try:
         return fetch()
-    except DdsProxyError as exc:
-        _raise_form_validation_error(str(exc))
+    except (DdsProxyError, AggregatorProxyError) as exc:
+        raise_form_validation_error(str(exc))

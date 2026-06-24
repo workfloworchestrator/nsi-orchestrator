@@ -1,0 +1,77 @@
+config:
+  summary_forms: true
+name: mdp2p
+type: MultiDomainPoint2Point
+tag: MDP2P
+description: "Network Service Interface multi domain point to point"
+product_blocks:
+  - name: sap
+    type: ServiceAccessPoint
+    tag: SAP
+    description: "Service access point"
+    fields:
+      - name: vlan
+        type: str
+        description: "The VLAN used on the STP"
+        required: provisioning
+      - name: stp
+        type: ServiceTerminationPoint
+        description: "The STP of the SAP"
+        required: provisioning
+  - name: sdp_constraint
+    type: SdpConstraint
+    tag: SDP_CONSTRAINT
+    description: "SDP constraint for the PCE"
+    fields:
+      - name: constraint_type
+        type: enum
+        enum_type: str
+        values:
+          - "INCLUDE"
+          - "EXCLUDE"
+        description: "Wether to include or exclude the SDP"
+        required: provisioning
+      - name: sdp
+        type: ServiceDemarcationPoint
+        description: "The SDP the constraint refers to"
+        required: provisioning
+  - name: vc
+    type: VirtualCircuit
+    tag: VC
+    description: "Virtual circuit product block"
+    fields:
+      - name: circuit_description
+        type: str
+        description: "Virtual circuit description"
+        required: provisioning
+        modifiable: true
+      - name: service_speed
+        type: int
+        description: "Speed of the service"
+        required: provisioning
+      - name: saps
+        type: list
+        list_type: ServiceAccessPoint
+        min_items: 2
+        max_items: 2
+        description: "The two SAP of the VC"
+        required: provisioning
+      - name: sdp_constraints
+        type: list
+        list_type: SdpConstraint
+        min_items: 0
+        description: "List of SDP constraints for the PCE"
+        required: provisioning
+      - name: state
+        type: str
+        description: "Virtual circuit reservation state"
+        required: provisioning
+        modifiable: true
+      - name: global_reservation_id
+        type: str
+        description: "Orchestrator-generated global reservation id (urn:uuid:...)"
+        required: provisioning
+      - name: connection_id
+        type: str
+        description: "Aggregator-assigned connection id, known after the reserve callback"
+        required: active

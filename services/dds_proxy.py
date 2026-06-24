@@ -33,6 +33,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from services.edge_auth import client_kwargs
 from settings import settings
 
 logger = structlog.get_logger(__name__)
@@ -99,21 +100,14 @@ class DdsServiceDemarcationPoint(BaseModel):
 
 def _client_kwargs() -> dict[str, Any]:
     """Build the httpx client arguments for the configured authentication mode."""
-    if settings.dds_proxy_mtls_enabled:
-        cert: str | tuple[str, str] | None = (
-            (settings.dds_proxy_client_cert, settings.dds_proxy_client_key)
-            if settings.dds_proxy_client_cert and settings.dds_proxy_client_key
-            else settings.dds_proxy_client_cert
-        )
-        return {"cert": cert, "verify": settings.dds_proxy_ca_bundle or True}
-
-    # Local dev: fake the dds-proxy mTLS-path identity headers (X-Auth-Method == its MTLS_HEADER).
-    return {
-        "headers": {
-            "X-Auth-Method": settings.dds_proxy_auth_method,
-            "X-Client-DN": settings.dds_proxy_client_dn,
-        }
-    }
+    return client_kwargs(
+        mtls_enabled=settings.dds_proxy_mtls_enabled,
+        client_cert=settings.dds_proxy_client_cert,
+        client_key=settings.dds_proxy_client_key,
+        ca_bundle=settings.dds_proxy_ca_bundle,
+        auth_method=settings.dds_proxy_auth_method,
+        client_dn=settings.dds_proxy_client_dn,
+    )
 
 
 def _fetch(path: str) -> list[dict[str, Any]]:

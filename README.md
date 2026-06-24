@@ -64,14 +64,16 @@ The diagram below shows the ANA-GRAM automation stack and how the NSI Orchestrat
 classDiagram
     namespace MDP2P {
         class VirtualCircuitBlock {
-            +description
+            +circuit_description
             +saps
             +service_speed
             +sdp_constraints
             +state
+            +global_reservation_id
+            +connection_id
         }
-        class ServiceAttachmentPointBlock {
-            +label
+        class ServiceAccessPointBlock {
+            +vlan
             +stp
         }
         class SdpConstraintBlock {
@@ -108,8 +110,8 @@ classDiagram
         }
     }
 
-    VirtualCircuitBlock "1" -- "2" ServiceAttachmentPointBlock
-    ServiceAttachmentPointBlock "n" -- "1" ServiceTerminationPointBlock
+    VirtualCircuitBlock "1" -- "2" ServiceAccessPointBlock
+    ServiceAccessPointBlock "n" -- "1" ServiceTerminationPointBlock
     ServiceTerminationPointBlock "n" -- "1" SwitchingServiceBlock
     SwitchingServiceBlock "n" -- "1" TopologyBlock
     VirtualCircuitBlock "n"  -- "n" SdpConstraintBlock
@@ -132,6 +134,38 @@ manage its lifecycle:
 - **Terminate** — remove the subscription. The DDS is the authoritative, read-only source of
   topologies, so nothing is deprovisioned in an external system.
 
+## Multi domain point-to-point product
+
+The multi domain point-to-point (MDP2P) product represents a connection reserved through the
+[NSI Aggregator Proxy](https://github.com/workfloworchestrator/nsi-aggregator-proxy). A subscription
+holds a `VirtualCircuit` block with two `ServiceAccessPoint`s (each a subscribed STP plus a VLAN
+carried as the SAP `vlan`), an optional list of `SdpConstraint`s (SDPs to include or exclude from
+the path), the requested `service_speed`, the orchestrator-generated `global_reservation_id`, the
+aggregator-assigned `connection_id`, and the reservation `state`.
+
+The reservation `state` is driven by a small [python-statemachine](https://pypi.org/project/python-statemachine/)
+connection state machine (`CREATED → RESERVED → ACTIVATED`, with `terminate` to `TERMINATED` and any
+step able to end in `FAILED`). The aggregator owns the detailed NSI lifecycle and rejects illegal
+operations itself; this state machine is the orchestrator's local view, persisted on the block. The
+reserve, provision, release and terminate operations are asynchronous: each fires a request and the
+aggregator POSTs the result back to a `callback_step`.
+
+- **Create** — form for a description, source/destination STP and VLAN, the service speed, and SDPs
+  to include/exclude. Each STP option is labelled with its still-free VLANs (its DDS range minus the
+  VLANs the aggregator reports in use), and STPs already part of an SDP are gated behind a checkbox;
+  each VLAN is validated against its STP (within range and not already in use). Reserves the
+  connection via `POST /reservations` with a freshly generated global reservation id; the state ends
+  up `RESERVED` or `FAILED`.
+- **Provision** — `RESERVED → ACTIVATED` via `POST /reservations/{connectionId}/provision`.
+- **Release** — `ACTIVATED → RESERVED` via `POST /reservations/{connectionId}/release`.
+- **Modify** — edit the local virtual circuit `circuit_description` (not pushed to the aggregator).
+- **Validate** — assert the connection's stored capacity, STPs, VLANs, global reservation id and
+  state still match `GET /reservations/{connectionId}`.
+- **Terminate** — `RESERVED` or `FAILED` → `TERMINATED` via `DELETE /reservations/{connectionId}`.
+
+SDP include/exclude constraints are stored on the subscription but are not yet sent to the
+aggregator, which has no path-constraint field.
+
 ## Configuration
 
 Configuration is read from environment variables.
@@ -153,10 +187,22 @@ When `DDS_PROXY_MTLS_ENABLED` is `false`, the orchestrator authenticates to the 
 sending the `X-Auth-Method` / `X-Client-DN` identity headers it trusts at its edge — a development
 shortcut only. In a deployment, enable mTLS and configure the certificate, key, and CA bundle.
 
+The Aggregator Proxy is configured the same way, with `AGGREGATOR_PROXY_*` variables that mirror the
+`DDS_PROXY_*` ones above (`AGGREGATOR_PROXY_BASE_URL`, `AGGREGATOR_PROXY_TIMEOUT_SECONDS`,
+`AGGREGATOR_PROXY_MTLS_ENABLED`, `AGGREGATOR_PROXY_CLIENT_CERT`, `AGGREGATOR_PROXY_CLIENT_KEY`,
+`AGGREGATOR_PROXY_CA_BUNDLE`, `AGGREGATOR_PROXY_AUTH_METHOD`, `AGGREGATOR_PROXY_CLIENT_DN`). In
+addition:
+
+| Variable | Default | Description |
+|---|---|---|
+| `REQUESTER_NSA` | `urn:ogf:network:example.net:2026:nsa:nsi-orchestrator` | NSA URN this orchestrator presents as the requester. |
+| `PROVIDER_NSA` | `urn:ogf:network:example.net:2026:nsa:safnari` | NSA URN of the target aggregator; must match the Aggregator Proxy's configured provider NSA. |
+| `ORCHESTRATOR_CALLBACK_BASE_URL` | `http://localhost:8080` | This orchestrator's externally reachable base URL; the Aggregator Proxy POSTs reservation results to `<base>/api/processes/{id}/callback/{token}`. Override in every deployment. |
+
 ### Default customer
 
-This orchestrator has no CRM, so topology subscriptions are created against orchestrator-core's
-built-in default customer (the create form does not ask for one). Its identity is configured through
+This orchestrator has no CRM, so subscriptions are created against orchestrator-core's
+built-in default customer (the create forms do not ask for one). Its identity is configured through
 the standard orchestrator-core environment variables — no application-specific settings are needed:
 
 | Variable | Default | Description |
