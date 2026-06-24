@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import importlib
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -80,6 +81,17 @@ def test_stp_selector_labels_show_free_vlan_range_and_sdp_marker() -> None:
 )
 def test_available_vlan_ranges(label_group: str, in_use: set[int], expected: str) -> None:
     assert available_vlan_ranges(label_group, in_use) == expected
+
+
+@pytest.mark.parametrize("module_name", ["provision_mdp2p", "release_mdp2p"])
+def test_action_form_generator_builds(module_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The provision/release confirmation forms build without a class-body name collision."""
+    module = importlib.import_module(f"workflows.mdp2p.{module_name}")
+    monkeypatch.setattr(
+        module.MultiDomainPoint2Point, "from_subscription", staticmethod(lambda _sid: SimpleNamespace())
+    )
+    form = next(module.initial_input_form_generator("11111111-1111-1111-1111-111111111111"))
+    assert "subscription_id" in form.model_fields
 
 
 def test_vlans_in_use_by_stp_holds_failed_but_releases_terminated() -> None:

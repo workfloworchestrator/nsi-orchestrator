@@ -11,11 +11,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Annotated
+
 import structlog
 from orchestrator.core.forms import FormPage
 from orchestrator.core.forms.validators import DisplaySubscription
 from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import terminate_workflow
+from pydantic import Field
 from pydantic_forms.types import InputForm, State, UUIDstr
 
 from products.product_types.sdp import ServiceDemarcationPoint
@@ -24,10 +27,10 @@ logger = structlog.get_logger(__name__)
 
 
 def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id: UUIDstr) -> InputForm:
-    temp_subscription_id = subscription_id
+    SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
 
     class TerminateServiceDemarcationPointForm(FormPage):
-        subscription_id: DisplaySubscription = temp_subscription_id  # type: ignore[assignment]
+        subscription_id: SubscriptionId
 
     return TerminateServiceDemarcationPointForm
 

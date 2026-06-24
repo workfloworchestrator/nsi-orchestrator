@@ -13,15 +13,17 @@
 
 """Provision a multi domain point-to-point connection: RESERVED -> ACTIVATED (or FAILED)."""
 
+from typing import Annotated
+
 import structlog
 from orchestrator.core.forms import FormPage
+from orchestrator.core.forms.validators import DisplaySubscription
 from orchestrator.core.types import SubscriptionLifecycle
 from orchestrator.core.workflow import StepList, begin, callback_step, step
 from orchestrator.core.workflows.steps import set_status
 from orchestrator.core.workflows.utils import modify_workflow
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 from pydantic_forms.types import FormGenerator, State, UUIDstr
-from pydantic_forms.validators import DisplaySubscription
 
 from products.product_types.mdp2p import MultiDomainPoint2Point, MultiDomainPoint2PointProvisioning
 from services import aggregator_proxy
@@ -33,11 +35,12 @@ logger = structlog.get_logger(__name__)
 
 def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
+    SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
 
     class ProvisionMultiDomainPoint2PointForm(FormPage):
         model_config = ConfigDict(title="Provision connection")
 
-        subscription_id: DisplaySubscription = subscription_id  # type: ignore[assignment]
+        subscription_id: SubscriptionId
 
     yield ProvisionMultiDomainPoint2PointForm
     return {"subscription": subscription}
