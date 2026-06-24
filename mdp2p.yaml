@@ -10,9 +10,9 @@ product_blocks:
     tag: SAP
     description: "Service access point"
     fields:
-      - name: label
+      - name: vlan
         type: str
-        description: "The label used on the STP"
+        description: "The VLAN used on the STP"
         required: provisioning
       - name: stp
         type: ServiceTerminationPoint

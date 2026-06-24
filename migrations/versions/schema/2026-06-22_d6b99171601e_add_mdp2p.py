@@ -56,7 +56,7 @@ new_products = {
             "tag": "SAP",
             "status": "active",
             "resources": {
-                "label": "The label used on the STP",
+                "vlan": "The VLAN used on the STP",
             },
             "depends_on_block_relations": [
                 "ServiceTerminationPoint",

@@ -44,8 +44,8 @@ def validate_reservation(subscription: MultiDomainPoint2Point) -> State:
         raise AssertionError("Aggregator returned no criteria to validate the connection against")
     p2ps = reservation.criteria.p2ps
     source, destination = vc.saps
-    expected_source = f"{source.stp.stp_id}?vlan={source.label}"
-    expected_destination = f"{destination.stp.stp_id}?vlan={destination.label}"
+    expected_source = f"{source.stp.stp_id}?vlan={source.vlan}"
+    expected_destination = f"{destination.stp.stp_id}?vlan={destination.vlan}"
     if p2ps.capacity != vc.service_speed:
         raise AssertionError(f"Aggregator capacity {p2ps.capacity} does not match stored {vc.service_speed}")
     if p2ps.source_stp != expected_source:

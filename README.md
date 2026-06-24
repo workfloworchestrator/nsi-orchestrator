@@ -73,7 +73,7 @@ classDiagram
             +connection_id
         }
         class ServiceAccessPointBlock {
-            +label
+            +vlan
             +stp
         }
         class SdpConstraintBlock {
@@ -139,7 +139,7 @@ manage its lifecycle:
 The multi domain point-to-point (MDP2P) product represents a connection reserved through the
 [NSI Aggregator Proxy](https://github.com/workfloworchestrator/nsi-aggregator-proxy). A subscription
 holds a `VirtualCircuit` block with two `ServiceAccessPoint`s (each a subscribed STP plus a VLAN
-carried as the SAP `label`), an optional list of `SdpConstraint`s (SDPs to include or exclude from
+carried as the SAP `vlan`), an optional list of `SdpConstraint`s (SDPs to include or exclude from
 the path), the requested `service_speed`, the orchestrator-generated `global_reservation_id`, the
 aggregator-assigned `connection_id`, and the reservation `state`.
 

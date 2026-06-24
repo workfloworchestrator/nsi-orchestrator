@@ -145,10 +145,10 @@ def construct_mdp2p_model(
     vc.global_reservation_id = f"urn:uuid:{uuid4()}"
     vc.saps = [
         ServiceAccessPointBlockInactive.new(
-            subscription_id=subscription_id, label=str(source_vlan), stp=stp_block_for(source_stp)
+            subscription_id=subscription_id, vlan=str(source_vlan), stp=stp_block_for(source_stp)
         ),
         ServiceAccessPointBlockInactive.new(
-            subscription_id=subscription_id, label=str(destination_vlan), stp=stp_block_for(destination_stp)
+            subscription_id=subscription_id, vlan=str(destination_vlan), stp=stp_block_for(destination_stp)
         ),
     ]
     vc.sdp_constraints = [
@@ -181,8 +181,8 @@ def reserve_connection(subscription: MultiDomainPoint2PointProvisioning, callbac
         global_reservation_id=vc.global_reservation_id,
         description=vc.circuit_description,
         capacity=vc.service_speed,
-        source_stp=f"{source.stp.stp_id}?vlan={source.label}",
-        dest_stp=f"{destination.stp.stp_id}?vlan={destination.label}",
+        source_stp=f"{source.stp.stp_id}?vlan={source.vlan}",
+        dest_stp=f"{destination.stp.stp_id}?vlan={destination.vlan}",
         callback_url=f"{settings.orchestrator_callback_base_url}{callback_route}",
     )
     vc.connection_id = connection_id

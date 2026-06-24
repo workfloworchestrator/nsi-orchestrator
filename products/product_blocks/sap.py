@@ -24,14 +24,14 @@ from products.product_blocks.stp import (
 
 
 class ServiceAccessPointBlockInactive(ProductBlockModel, product_block_name="ServiceAccessPoint"):
-    label: str | None = None
+    vlan: str | None = None
     stp: ServiceTerminationPointBlockInactive | None = None
 
 
 class ServiceAccessPointBlockProvisioning(
     ServiceAccessPointBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]
 ):
-    label: str
+    vlan: str
     stp: ServiceTerminationPointBlockProvisioning
 
     @computed_field  # type: ignore[prop-decorator]
@@ -41,5 +41,5 @@ class ServiceAccessPointBlockProvisioning(
 
 
 class ServiceAccessPointBlock(ServiceAccessPointBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
-    label: str
+    vlan: str
     stp: ServiceTerminationPointBlock
