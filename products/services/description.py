@@ -63,4 +63,4 @@ def _sdp_description(sdp: ServiceDemarcationPointProvisioning) -> str:
 
 @description.register
 def _mdp2p_description(mdp2p: MultiDomainPoint2PointProvisioning) -> str:
-    return f"{mdp2p.product.tag} {mdp2p.vc.circuit_description}"
+    return f"{mdp2p.product.tag} {mdp2p.vc.circuit_description} ({mdp2p.vc.state})"
