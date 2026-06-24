@@ -200,6 +200,7 @@ def process_reservation_result(subscription: MultiDomainPoint2PointProvisioning,
         )
     event = "reserve_confirmed" if status == ConnectionState.RESERVED else "reserve_failed"
     subscription.vc.state = apply(subscription.vc.state, event)
+    subscription.description = description(subscription)
     return {"subscription": subscription}
 
 

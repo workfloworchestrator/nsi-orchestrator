@@ -26,6 +26,7 @@ from pydantic import ConfigDict, Field
 from pydantic_forms.types import FormGenerator, State, UUIDstr
 
 from products.product_types.mdp2p import MultiDomainPoint2Point, MultiDomainPoint2PointProvisioning
+from products.services.description import description
 from services import aggregator_proxy
 from settings import settings
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
@@ -68,6 +69,7 @@ def process_release_result(subscription: MultiDomainPoint2PointProvisioning, cal
         )
     event = "release_confirmed" if status == ConnectionState.RESERVED else "release_failed"
     subscription.vc.state = apply(subscription.vc.state, event)
+    subscription.description = description(subscription)
     return {"subscription": subscription}
 
 

@@ -22,6 +22,7 @@ from pydantic import Field
 from pydantic_forms.types import InputForm, State, UUIDstr
 
 from products.product_types.mdp2p import MultiDomainPoint2Point
+from products.services.description import description
 from services import aggregator_proxy
 from settings import settings
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
@@ -55,6 +56,7 @@ def terminate_connection(subscription: MultiDomainPoint2Point, callback_route: s
 @step("Process terminate result")
 def process_terminate_result(subscription: MultiDomainPoint2Point, callback_result: dict) -> State:
     subscription.vc.state = apply(subscription.vc.state, "terminate")
+    subscription.description = description(subscription)
     return {"subscription": subscription}
 
 
