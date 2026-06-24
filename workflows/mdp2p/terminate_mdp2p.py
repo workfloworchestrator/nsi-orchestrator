@@ -25,26 +25,23 @@ from products.product_types.mdp2p import MultiDomainPoint2Point
 from services import aggregator_proxy
 from settings import settings
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
+from workflows.shared import raise_form_validation_error
 
 logger = structlog.get_logger(__name__)
 
 
 def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id: UUIDstr) -> InputForm:
+    subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
+    if subscription.vc.state not in (ConnectionState.RESERVED, ConnectionState.FAILED):
+        raise_form_validation_error(
+            f"Connection must be RESERVED or FAILED to terminate, not {subscription.vc.state}; release it first"
+        )
     SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
 
     class TerminateMultiDomainPoint2PointForm(FormPage):
         subscription_id: SubscriptionId
 
     return TerminateMultiDomainPoint2PointForm
-
-
-@step("Check connection can be terminated")
-def check_terminable(subscription: MultiDomainPoint2Point) -> State:
-    if subscription.vc.state not in (ConnectionState.RESERVED, ConnectionState.FAILED):
-        raise ValueError(
-            f"Connection must be RESERVED or FAILED to terminate, not {subscription.vc.state}; release it first"
-        )
-    return {"subscription": subscription}
 
 
 @step("Terminate connection with the aggregator")
@@ -63,12 +60,8 @@ def process_terminate_result(subscription: MultiDomainPoint2Point, callback_resu
 
 @terminate_workflow(initial_input_form=terminate_initial_input_form_generator)
 def terminate_mdp2p() -> StepList:
-    return (
-        begin
-        >> check_terminable
-        >> callback_step(
-            name="Terminate connection",
-            action_step=terminate_connection,
-            validate_step=process_terminate_result,
-        )
+    return begin >> callback_step(
+        name="Terminate connection",
+        action_step=terminate_connection,
+        validate_step=process_terminate_result,
     )

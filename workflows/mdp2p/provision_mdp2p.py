@@ -29,12 +29,15 @@ from products.product_types.mdp2p import MultiDomainPoint2Point, MultiDomainPoin
 from services import aggregator_proxy
 from settings import settings
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
+from workflows.shared import raise_form_validation_error
 
 logger = structlog.get_logger(__name__)
 
 
 def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
+    if subscription.vc.state != ConnectionState.RESERVED:
+        raise_form_validation_error(f"Connection must be RESERVED to provision, not {subscription.vc.state}")
     SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
 
     class ProvisionMultiDomainPoint2PointForm(FormPage):
@@ -43,13 +46,6 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
         subscription_id: SubscriptionId
 
     yield ProvisionMultiDomainPoint2PointForm
-    return {"subscription": subscription}
-
-
-@step("Check connection is reserved")
-def check_reserved(subscription: MultiDomainPoint2Point) -> State:
-    if subscription.vc.state != ConnectionState.RESERVED:
-        raise ValueError(f"Connection must be RESERVED to provision, not {subscription.vc.state}")
     return {"subscription": subscription}
 
 
@@ -79,7 +75,6 @@ def process_provision_result(subscription: MultiDomainPoint2PointProvisioning, c
 def provision_mdp2p() -> StepList:
     return (
         begin
-        >> check_reserved
         >> set_status(SubscriptionLifecycle.PROVISIONING)
         >> callback_step(
             name="Provision connection",

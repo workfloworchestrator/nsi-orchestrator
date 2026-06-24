@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from pydantic_forms.exceptions import FormValidationError
 
 from services.aggregator_proxy import AggregatorReservation
 from workflows.mdp2p.shared import forms
@@ -83,15 +84,49 @@ def test_available_vlan_ranges(label_group: str, in_use: set[int], expected: str
     assert available_vlan_ranges(label_group, in_use) == expected
 
 
-@pytest.mark.parametrize("module_name", ["provision_mdp2p", "release_mdp2p"])
-def test_action_form_generator_builds(module_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The provision/release confirmation forms build without a class-body name collision."""
-    module = importlib.import_module(f"workflows.mdp2p.{module_name}")
+_SUB_ID = "11111111-1111-1111-1111-111111111111"
+_CUST_ID = "22222222-2222-2222-2222-222222222222"
+
+# (module, a state the action is allowed from, a state it must be rejected from)
+_MDP2P_ACTION_FORMS = [
+    pytest.param("provision_mdp2p", "RESERVED", "ACTIVATED", id="provision"),
+    pytest.param("release_mdp2p", "ACTIVATED", "RESERVED", id="release"),
+    pytest.param("terminate_mdp2p", "RESERVED", "ACTIVATED", id="terminate"),
+]
+
+
+def _patch_state(monkeypatch: pytest.MonkeyPatch, module: object, state: str) -> None:
     monkeypatch.setattr(
-        module.MultiDomainPoint2Point, "from_subscription", staticmethod(lambda _sid: SimpleNamespace())
+        module.MultiDomainPoint2Point,  # type: ignore[attr-defined]
+        "from_subscription",
+        staticmethod(lambda _sid: SimpleNamespace(vc=SimpleNamespace(state=state))),
     )
-    form = next(module.initial_input_form_generator("11111111-1111-1111-1111-111111111111"))
-    assert "subscription_id" in form.model_fields
+
+
+def _build_form(module: object) -> object:
+    # terminate returns the form directly; provision/release yield it from a generator.
+    if hasattr(module, "terminate_initial_input_form_generator"):
+        return module.terminate_initial_input_form_generator(_SUB_ID, _CUST_ID)
+    return next(module.initial_input_form_generator(_SUB_ID))  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(("module_name", "valid_state", "wrong_state"), _MDP2P_ACTION_FORMS)
+def test_mdp2p_action_form_builds_in_valid_state(
+    module_name: str, valid_state: str, wrong_state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = importlib.import_module(f"workflows.mdp2p.{module_name}")
+    _patch_state(monkeypatch, module, valid_state)
+    assert "subscription_id" in _build_form(module).model_fields  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(("module_name", "valid_state", "wrong_state"), _MDP2P_ACTION_FORMS)
+def test_mdp2p_action_form_gate_rejects_wrong_state(
+    module_name: str, valid_state: str, wrong_state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = importlib.import_module(f"workflows.mdp2p.{module_name}")
+    _patch_state(monkeypatch, module, wrong_state)
+    with pytest.raises(FormValidationError):
+        _build_form(module)
 
 
 def test_vlans_in_use_by_stp_holds_failed_but_releases_terminated() -> None:

@@ -27,7 +27,6 @@ import pytest
         "workflows.switchingservice.terminate_switchingservice",
         "workflows.stp.terminate_stp",
         "workflows.sdp.terminate_sdp",
-        "workflows.mdp2p.terminate_mdp2p",
     ],
 )
 def test_terminate_form_generator_builds(module_path: str) -> None:

@@ -119,7 +119,7 @@ def subscription_ids_for_product_type(product_type: str) -> list[UUID]:
     return list(db.session.scalars(query))
 
 
-def _raise_form_validation_error(message: str) -> NoReturn:
+def raise_form_validation_error(message: str) -> NoReturn:
     """Raise a FormValidationError carrying ``message`` (rendered cleanly by the orchestrator UI)."""
 
     class _FormError(BaseModel):
@@ -143,4 +143,4 @@ def fetch_for_form(fetch: Callable[[], T]) -> T:
     try:
         return fetch()
     except (DdsProxyError, AggregatorProxyError) as exc:
-        _raise_form_validation_error(str(exc))
+        raise_form_validation_error(str(exc))

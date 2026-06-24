@@ -29,12 +29,15 @@ from products.product_types.mdp2p import MultiDomainPoint2Point, MultiDomainPoin
 from services import aggregator_proxy
 from settings import settings
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
+from workflows.shared import raise_form_validation_error
 
 logger = structlog.get_logger(__name__)
 
 
 def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
+    if subscription.vc.state != ConnectionState.ACTIVATED:
+        raise_form_validation_error(f"Connection must be ACTIVATED to release, not {subscription.vc.state}")
     SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
 
     class ReleaseMultiDomainPoint2PointForm(FormPage):
@@ -43,13 +46,6 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
         subscription_id: SubscriptionId
 
     yield ReleaseMultiDomainPoint2PointForm
-    return {"subscription": subscription}
-
-
-@step("Check connection is activated")
-def check_activated(subscription: MultiDomainPoint2Point) -> State:
-    if subscription.vc.state != ConnectionState.ACTIVATED:
-        raise ValueError(f"Connection must be ACTIVATED to release, not {subscription.vc.state}")
     return {"subscription": subscription}
 
 
@@ -79,7 +75,6 @@ def process_release_result(subscription: MultiDomainPoint2PointProvisioning, cal
 def release_mdp2p() -> StepList:
     return (
         begin
-        >> check_activated
         >> set_status(SubscriptionLifecycle.PROVISIONING)
         >> callback_step(
             name="Release connection",
