@@ -140,6 +140,47 @@ manage its lifecycle:
 - **Terminate** — remove the subscription. The DDS is the authoritative, read-only source of
   topologies, so nothing is deprovisioned in an external system.
 
+## Switching service product
+
+The switching service product tracks the NSI switching services advertised in the DDS. Each
+subscription represents a single switching service, identified by its `switching_service_id`, named
+by a `switching_service_name`, and linked to the subscribed `Topology` it belongs to. Four workflows
+manage its lifecycle:
+
+- **Create** — presents a dropdown of the switching services the DDS Proxy returns whose topology is
+  already subscribed (so the topology link always resolves), and links the new subscription to that
+  topology.
+- **Modify** — change the `switching_service_name` (`switching_service_id` is read-only).
+- **Validate** — assert the subscription's `switching_service_id` is still advertised by the DDS Proxy.
+- **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
+
+## Service termination point product
+
+The service termination point (STP) product tracks the NSI STPs advertised in the DDS. Each
+subscription holds an `stp_id`, an editable `stp_name`, the `capacity` and `label_group` (the set of
+VLANs the STP allows) read from the DDS, and a link to the subscribed `SwitchingService` it belongs
+to. Five workflows manage its lifecycle:
+
+- **Create** — presents a dropdown of the STPs the DDS Proxy returns whose switching service is
+  already subscribed; `capacity`, `label_group`, and the initial `stp_name` come straight from the DDS.
+- **Modify** — change the `stp_name` (the rest is DDS-derived and read-only).
+- **Validate** — assert the subscription's `stp_id` is still advertised by the DDS Proxy.
+- **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
+- **Reconcile** — re-read the STP from the DDS Proxy and update `capacity` if it changed; if the STP
+  is no longer advertised the stored value is left untouched.
+
+## Service demarcation point product
+
+The service demarcation point (SDP) product represents a link between two STPs in different domains.
+Each subscription holds an `sdp_name` and exactly two subscribed `ServiceTerminationPoint`s. Four
+workflows manage its lifecycle:
+
+- **Create** — presents a dropdown of the STP pairs the DDS Proxy returns whose *both* STPs are
+  already subscribed, and links the two STP blocks into the SDP.
+- **Modify** — change the `sdp_name`.
+- **Validate** — assert the SDP's STP pair is still advertised by the DDS Proxy.
+- **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
+
 ## Multi domain point-to-point product
 
 The multi domain point-to-point (MDP2P) product represents a connection reserved through the
@@ -219,3 +260,51 @@ the standard orchestrator-core environment variables — no application-specific
 | `DEFAULT_CUSTOMER_IDENTIFIER` | `59289a57-70fb-4ff5-9c93-10fe67b12434` | UUID stored as each subscription's customer id. |
 | `DEFAULT_CUSTOMER_FULLNAME` | `Default::Orchestrator-Core Customer` | Display name shown for the customer. |
 | `DEFAULT_CUSTOMER_SHORTCODE` | `default-cust` | Short code shown for the customer. |
+
+## Development
+
+The project targets Python 3.13 and is managed with [uv](https://docs.astral.sh/uv/). It needs a
+PostgreSQL database with the [pgvector](https://github.com/pgvector/pgvector) extension (required by
+orchestrator-core 5.0).
+
+```shell
+uv sync                                                   # install runtime + dev dependencies
+createdb nsi && export DATABASE_URI=postgresql+psycopg://nsi:nsi@localhost/nsi
+uv run python main.py db upgrade heads                    # create the schema
+uv run uvicorn wsgi:app --host 0.0.0.0 --port 8080        # run the orchestrator API
+```
+
+`main.py` exposes the orchestrator-core CLI (`db`, `scheduler`, `generate`, …); `wsgi:app` is the
+FastAPI/`OrchestratorCore` application served in the container (see the `Dockerfile`).
+
+### Adding or changing a product
+
+Products are scaffolded from the [`templates/`](templates) YAML with the orchestrator-core generator,
+then the business logic is filled in by hand:
+
+```shell
+uv run python main.py generate product-blocks --config-file templates/<product>.yaml
+uv run python main.py generate product       --config-file templates/<product>.yaml
+uv run python main.py generate workflows     --config-file templates/<product>.yaml
+uv run python main.py generate migration     --config-file templates/<product>.yaml
+```
+
+New products and workflows are registered by importing `products` and `workflows` in `main.py` /
+`wsgi.py`; the per-product workflow instances live in [`workflows/__init__.py`](workflows/__init__.py).
+
+### Tests, linting, and types
+
+```shell
+uv run ruff check .            # lint
+uv run ruff format --check .   # formatting
+uv run mypy .                  # static types (strict, whole tree except migrations)
+uv run pytest                  # unit + integration tests
+```
+
+The suite has two layers. The unit tests under `tests/` mock the proxy clients and exercise the form
+helpers, the connection state machine, the `description` builders, and the individual workflow steps.
+The integration tests under `tests/workflows/` run the real workflows end-to-end against a throwaway
+`nsi-test` database: a session fixture recreates and migrates it (pgvector required), each test runs in
+a transaction that is rolled back afterwards, and the DDS and Aggregator proxies are mocked at the
+service boundary. Set `DATABASE_URI` to a `nsi-test` database (the CI job uses
+`postgresql+psycopg://nsi:nsi@localhost/nsi-test` against a `pgvector/pgvector:pg16` service).
