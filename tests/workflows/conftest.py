@@ -1,0 +1,104 @@
+# Copyright 2026 SURF.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Database fixtures for the workflow integration tests.
+
+A real ``nsi-test`` Postgres is created once per session and migrated with the app's own
+``db upgrade heads`` (so the core schema + pgvector + all product migrations run exactly as in
+production). Each test runs inside a transaction that is rolled back afterward, so tests are
+isolated and the database stays at its migrated baseline. These fixtures live under ``tests/workflows``
+so the pure-unit tests elsewhere keep running without a database.
+"""
+
+# orchestrator-core's `db` is a runtime proxy whose engine/session internals mypy can't see; this
+# plumbing mirrors orchestrator-core's own test fixtures.
+# mypy: disable-error-code="attr-defined, call-overload"
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from contextlib import closing
+from pathlib import Path
+from typing import cast
+
+import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.orm.scoping import scoped_session
+from sqlalchemy.orm.session import close_all_sessions, sessionmaker
+
+import products  # noqa: F401  registers SUBSCRIPTION_MODEL_REGISTRY
+import workflows  # noqa: F401  registers the LazyWorkflowInstance entries
+from orchestrator.core.db import db
+from orchestrator.core.db.database import ENGINE_ARGUMENTS, SESSION_ARGUMENTS, BaseModel, Database, SearchQuery
+
+_REPO = Path(__file__).resolve().parents[2]
+
+
+def _recreate_database(db_uri: str) -> None:
+    url = make_url(db_uri)
+    db_name = url.database
+    admin_engine = create_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    with closing(admin_engine.connect()) as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))
+        conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+    admin_engine.dispose()
+
+
+def _run_migrations(db_uri: str) -> None:
+    # Use the app's own migration command so the core + product version locations compose exactly
+    # as in production (and pgvector / the core schema are created).
+    result = subprocess.run(
+        [sys.executable, "main.py", "db", "upgrade", "heads"],
+        cwd=_REPO,
+        env={**os.environ, "DATABASE_URI": db_uri},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"db upgrade heads failed:\n{result.stdout}\n{result.stderr}")
+
+
+@pytest.fixture(scope="session")
+def database() -> object:
+    db_uri = os.environ["DATABASE_URI"]
+    _recreate_database(db_uri)
+    _run_migrations(db_uri)
+
+    db.update(Database(db_uri))
+    db.wrapped_database.engine = create_engine(db_uri, **ENGINE_ARGUMENTS)
+    try:
+        yield
+    finally:
+        db.wrapped_database.engine.dispose()
+        close_all_sessions()
+
+
+@pytest.fixture(autouse=True)
+def db_session(database: object) -> object:
+    """Run each test in a transaction that is rolled back afterward (orchestrator-core pattern)."""
+    with closing(db.wrapped_database.engine.connect()) as connection:
+        db.wrapped_database.session_factory = sessionmaker(**SESSION_ARGUMENTS, bind=connection)
+        db.wrapped_database.scoped_session = scoped_session(db.session_factory, db._scopefunc)
+        BaseModel.set_query(cast("SearchQuery", db.wrapped_database.scoped_session.query_property()))
+
+        transaction = connection.begin()
+        try:
+            yield
+        finally:
+            close_all_sessions()
+            if not transaction._deactivated_from_connection:
+                transaction.rollback()
