@@ -43,8 +43,21 @@ import products  # noqa: F401  registers SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  registers the LazyWorkflowInstance entries
 from orchestrator.core.db import db
 from orchestrator.core.db.database import ENGINE_ARGUMENTS, SESSION_ARGUMENTS, BaseModel, Database, SearchQuery
+from services import dds_proxy
 
 _REPO = Path(__file__).resolve().parents[2]
+
+# A small, internally consistent DDS dataset: topology t1 -> switching service ss1 -> two STPs,
+# paired into one SDP. Keys are the camelCase aliases the real proxy returns.
+DDS_DATA: dict[str, list[dict[str, object]]] = {
+    "/topologies": [{"id": "urn:t1", "name": "Topo 1"}],
+    "/switching-services": [{"id": "urn:ss1", "topologyId": "urn:t1"}],
+    "/service-termination-points": [
+        {"id": "urn:stp1", "name": "STP 1", "capacity": 1000, "labelGroup": "1000-1999", "switchingServiceId": "urn:ss1"},
+        {"id": "urn:stp2", "name": "STP 2", "capacity": 2000, "labelGroup": "2000-2999", "switchingServiceId": "urn:ss1"},
+    ],
+    "/service-demarcation-points": [{"stpAId": "urn:stp1", "stpZId": "urn:stp2"}],
+}
 
 
 def _recreate_database(db_uri: str) -> None:
@@ -102,3 +115,10 @@ def db_session(database: object) -> object:
             close_all_sessions()
             if not transaction._deactivated_from_connection:
                 transaction.rollback()
+
+
+@pytest.fixture
+def dds(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[dict[str, object]]]:
+    """Mock the single dds-proxy ``_fetch`` so every ``fetch_*`` (in any module) returns DDS_DATA."""
+    monkeypatch.setattr(dds_proxy, "_fetch", lambda path: DDS_DATA[path])
+    return DDS_DATA

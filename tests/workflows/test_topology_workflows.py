@@ -19,18 +19,19 @@ import pytest
 from orchestrator.core.types import SubscriptionLifecycle
 
 from products.product_types.topology import Topology
-from services.dds_proxy import DdsTopology
 from tests.workflows import assert_complete, extract_state, product_id, run_workflow
 
 
 @pytest.fixture
-def _dds_topologies(monkeypatch: pytest.MonkeyPatch) -> None:
-    from workflows.topology.shared import forms
+def topology_subscription(dds: object) -> str:
+    result, _, _ = run_workflow(
+        "create_topology", [{"product": product_id("Topology")}, {"topology": "urn:t1"}, {}]
+    )
+    assert_complete(result)
+    return str(extract_state(result)["subscription_id"])
 
-    monkeypatch.setattr(forms, "fetch_topologies", lambda: [DdsTopology(id="urn:t1", name="Topo 1")])
 
-
-def test_create_topology(_dds_topologies: None) -> None:
+def test_create_topology(dds: object) -> None:
     result, _, _ = run_workflow(
         "create_topology", [{"product": product_id("Topology")}, {"topology": "urn:t1"}, {}]
     )
@@ -40,3 +41,25 @@ def test_create_topology(_dds_topologies: None) -> None:
     assert subscription.status == SubscriptionLifecycle.ACTIVE
     assert subscription.topology.topology_id == "urn:t1"
     assert subscription.topology.topology_name == "Topo 1"
+
+
+def test_modify_topology(topology_subscription: str) -> None:
+    result, _, _ = run_workflow(
+        "modify_topology", [{"subscription_id": topology_subscription}, {"topology_name": "Renamed"}, {}]
+    )
+
+    assert_complete(result)
+    assert Topology.from_subscription(topology_subscription).topology.topology_name == "Renamed"
+
+
+def test_validate_topology(topology_subscription: str) -> None:
+    result, _, _ = run_workflow("validate_topology", [{"subscription_id": topology_subscription}])
+
+    assert_complete(result)
+
+
+def test_terminate_topology(topology_subscription: str) -> None:
+    result, _, _ = run_workflow("terminate_topology", [{"subscription_id": topology_subscription}, {}])
+
+    assert_complete(result)
+    assert Topology.from_subscription(topology_subscription).status == SubscriptionLifecycle.TERMINATED
