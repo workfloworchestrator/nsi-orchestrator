@@ -22,15 +22,29 @@ from services.dds_proxy import fetch_service_termination_points
 logger = structlog.get_logger(__name__)
 
 
-@step("Validate service termination point is still present in the DDS")
+@step("Validate service termination point against the DDS")
 def validate_stp_present_in_dds(subscription: ServiceTerminationPoint) -> State:
-    """Assert the subscription's stp_id is still advertised by the dds-proxy."""
+    """Assert the STP is still advertised by the dds-proxy with the stored capacity and VLAN range.
+
+    capacity and label_group are DDS-derived; drift means a reconcile is needed (reconcile_stp repairs
+    them). stp_name is operator-editable via modify, so it is deliberately not validated.
+    """
     stp_id = subscription.stp.stp_id
-    known_ids = {stp.id for stp in fetch_service_termination_points()}
-    if stp_id not in known_ids:
+    dds_stp = next((stp for stp in fetch_service_termination_points() if stp.id == stp_id), None)
+    if dds_stp is None:
         raise AssertionError(
             f"Service termination point {stp_id} is no longer present in the dds-proxy "
             "/service-termination-points endpoint"
+        )
+    if dds_stp.capacity != subscription.stp.capacity:
+        raise AssertionError(
+            f"Service termination point {stp_id} capacity drifted: stored {subscription.stp.capacity}, "
+            f"DDS advertises {dds_stp.capacity}; reconcile to repair"
+        )
+    if dds_stp.label_group != subscription.stp.label_group:
+        raise AssertionError(
+            f"Service termination point {stp_id} VLAN range drifted: stored {subscription.stp.label_group}, "
+            f"DDS advertises {dds_stp.label_group}; reconcile to repair"
         )
 
     return {"subscription": subscription}

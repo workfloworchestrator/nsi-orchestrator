@@ -164,10 +164,13 @@ to. Five workflows manage its lifecycle:
 - **Create** — presents a dropdown of the STPs the DDS Proxy returns whose switching service is
   already subscribed; `capacity`, `label_group`, and the initial `stp_name` come straight from the DDS.
 - **Modify** — change the `stp_name` (the rest is DDS-derived and read-only).
-- **Validate** — assert the subscription's `stp_id` is still advertised by the DDS Proxy.
+- **Validate** — assert the STP is still advertised by the DDS Proxy and that its stored `capacity`
+  and `label_group` still match the DDS; drift fails the validation and signals that a reconcile is
+  needed (the editable `stp_name` is deliberately not checked).
 - **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
-- **Reconcile** — re-read the STP from the DDS Proxy and update `capacity` if it changed; if the STP
-  is no longer advertised the stored value is left untouched.
+- **Reconcile** — re-read the STP from the DDS Proxy and update its DDS-derived `capacity` and
+  `label_group` (VLAN range) if they changed; if the STP is no longer advertised the stored values
+  are left untouched.
 
 ## Service demarcation point product
 

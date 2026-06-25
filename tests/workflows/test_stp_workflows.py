@@ -59,9 +59,9 @@ def test_terminate_stp(stp_subscriptions: dict[str, str]) -> None:
     assert ServiceTerminationPoint.from_subscription(subscription_id).status == SubscriptionLifecycle.TERMINATED
 
 
-def test_reconcile_stp_syncs_capacity(stp_subscriptions: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reconcile_stp_syncs_dds_attributes(stp_subscriptions: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
     subscription_id = stp_subscriptions["urn:stp1"]
-    # The DDS now advertises a different capacity for the STP.
+    # The DDS now advertises a different capacity and VLAN range for the STP.
     monkeypatch.setattr(
         dds_proxy,
         "_fetch",
@@ -70,7 +70,7 @@ def test_reconcile_stp_syncs_capacity(stp_subscriptions: dict[str, str], monkeyp
                 "id": "urn:stp1",
                 "name": "STP 1",
                 "capacity": 5000,
-                "labelGroup": "1000-1999",
+                "labelGroup": "3000-3999",
                 "switchingServiceId": "urn:ss1",
             }
         ],
@@ -78,4 +78,6 @@ def test_reconcile_stp_syncs_capacity(stp_subscriptions: dict[str, str], monkeyp
     result, _, _ = run_workflow("reconcile_stp", [{"subscription_id": subscription_id}])
 
     assert_complete(result)
-    assert ServiceTerminationPoint.from_subscription(subscription_id).stp.capacity == 5000
+    stp = ServiceTerminationPoint.from_subscription(subscription_id).stp
+    assert stp.capacity == 5000
+    assert stp.label_group == "3000-3999"

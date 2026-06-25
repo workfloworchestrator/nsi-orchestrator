@@ -22,16 +22,22 @@ from services.dds_proxy import fetch_service_termination_points
 logger = structlog.get_logger(__name__)
 
 
-@step("Reconcile capacity from the DDS")
-def reconcile_capacity(subscription: ServiceTerminationPoint) -> State:
-    """Update capacity from the dds-proxy; leave it untouched if the STP is no longer advertised."""
-    capacity_by_id = {stp.id: stp.capacity for stp in fetch_service_termination_points()}
-    if subscription.stp.stp_id in capacity_by_id:
-        subscription.stp.capacity = capacity_by_id[subscription.stp.stp_id]
+@step("Reconcile capacity and VLAN range from the DDS")
+def reconcile_dds_attributes(subscription: ServiceTerminationPoint) -> State:
+    """Update capacity and label_group from the dds-proxy; leave them untouched if the STP is gone.
+
+    capacity and label_group (the STP's allowed VLAN range) are both DDS-derived; an operator can
+    change either after the STP was subscribed, so reconcile re-reads them. The label_group keeps the
+    MDP2P create form validating new VLANs against the STP's current range.
+    """
+    stp_by_id = {stp.id: stp for stp in fetch_service_termination_points()}
+    if (dds_stp := stp_by_id.get(subscription.stp.stp_id)) is not None:
+        subscription.stp.capacity = dds_stp.capacity
+        subscription.stp.label_group = dds_stp.label_group
 
     return {"subscription": subscription}
 
 
 @reconcile_workflow()
 def reconcile_stp() -> StepList:
-    return begin >> reconcile_capacity
+    return begin >> reconcile_dds_attributes

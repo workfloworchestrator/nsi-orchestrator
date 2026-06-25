@@ -24,7 +24,8 @@ from types import SimpleNamespace
 
 import pytest
 
-# (module path, validate step, dds fetch name, a subscription whose id is "present")
+# Presence-only validators (module path, validate step, dds fetch name, a subscription whose id is
+# "present"). STP is not here: it also validates capacity/label_group, so it has dedicated tests below.
 _ID_VALIDATORS = [
     pytest.param(
         "workflows.topology.validate_topology",
@@ -39,13 +40,6 @@ _ID_VALIDATORS = [
         "fetch_switching_services",
         SimpleNamespace(switchingservice=SimpleNamespace(switching_service_id="present")),
         id="switchingservice",
-    ),
-    pytest.param(
-        "workflows.stp.validate_stp",
-        "validate_stp_present_in_dds",
-        "fetch_service_termination_points",
-        SimpleNamespace(stp=SimpleNamespace(stp_id="present")),
-        id="stp",
     ),
 ]
 
@@ -96,20 +90,57 @@ def test_validate_sdp_raises_when_pair_gone(monkeypatch: pytest.MonkeyPatch) -> 
         module.validate_sdp_present_in_dds.__wrapped__(subscription=_sdp_subscription())
 
 
+def _dds_stp(capacity: int = 1000, label_group: str = "1000-1999") -> SimpleNamespace:
+    return SimpleNamespace(id="urn:stp1", capacity=capacity, label_group=label_group)
+
+
+def _stp_subscription() -> SimpleNamespace:
+    return SimpleNamespace(stp=SimpleNamespace(stp_id="urn:stp1", capacity=1000, label_group="1000-1999"))
+
+
+def test_validate_stp_passes_when_attributes_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("workflows.stp.validate_stp")
+    monkeypatch.setattr(module, "fetch_service_termination_points", lambda: [_dds_stp()])
+
+    subscription = _stp_subscription()
+    assert module.validate_stp_present_in_dds.__wrapped__(subscription=subscription)["subscription"] is subscription
+
+
 @pytest.mark.parametrize(
-    ("advertised_id", "expected_capacity"),
+    "advertised",
     [
-        pytest.param("x", 4000, id="advertised-capacity-applied"),
-        pytest.param("other", 1000, id="not-advertised-left-unchanged"),
+        pytest.param([], id="no-longer-advertised"),
+        pytest.param([_dds_stp(capacity=5000)], id="capacity-drift"),
+        pytest.param([_dds_stp(label_group="3000-3999")], id="vlan-range-drift"),
     ],
 )
-def test_reconcile_stp_capacity(advertised_id: str, expected_capacity: int, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_stp_raises_on_drift(advertised: list[SimpleNamespace], monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("workflows.stp.validate_stp")
+    monkeypatch.setattr(module, "fetch_service_termination_points", lambda: advertised)
+
+    with pytest.raises(AssertionError):
+        module.validate_stp_present_in_dds.__wrapped__(subscription=_stp_subscription())
+
+
+@pytest.mark.parametrize(
+    ("advertised_id", "expected_capacity", "expected_label_group"),
+    [
+        pytest.param("x", 4000, "2000-2999", id="advertised-attributes-applied"),
+        pytest.param("other", 1000, "1000-1999", id="not-advertised-left-unchanged"),
+    ],
+)
+def test_reconcile_stp_dds_attributes(
+    advertised_id: str, expected_capacity: int, expected_label_group: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = importlib.import_module("workflows.stp.reconcile_stp")
     monkeypatch.setattr(
-        module, "fetch_service_termination_points", lambda: [SimpleNamespace(id=advertised_id, capacity=4000)]
+        module,
+        "fetch_service_termination_points",
+        lambda: [SimpleNamespace(id=advertised_id, capacity=4000, label_group="2000-2999")],
     )
 
-    subscription = SimpleNamespace(stp=SimpleNamespace(stp_id="x", capacity=1000))
-    result = module.reconcile_capacity.__wrapped__(subscription=subscription)
+    subscription = SimpleNamespace(stp=SimpleNamespace(stp_id="x", capacity=1000, label_group="1000-1999"))
+    result = module.reconcile_dds_attributes.__wrapped__(subscription=subscription)
 
     assert result["subscription"].stp.capacity == expected_capacity
+    assert result["subscription"].stp.label_group == expected_label_group
