@@ -119,6 +119,12 @@ classDiagram
     ServiceDemarcationPointBlock "1"  -- "2" ServiceTerminationPointBlock
 ```
 
+The product blocks and their fields are defined in [`templates/`](templates), one YAML per product
+(`topology`, `switchingservice`, `stp`, `sdp`, `mdp2p`). These are the configuration templates the
+orchestrator-core generator reads (`python main.py generate product-blocks|product|workflows|migration
+--config-file templates/<product>.yaml`); they describe the data model only — workflows, the connection
+state machine, and the proxy services are hand-written on top.
+
 ## Topology product
 
 The topology product tracks the NSI topologies discovered through the
