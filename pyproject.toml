@@ -7,8 +7,8 @@ requires-python = ">=3.13"
 dependencies = [
     "httpx==0.28.1",
     "orchestrator-core==5.0.4",
-    "pydantic-settings==2.14.1",
-    "python-statemachine==3.1.2",
+    "pydantic-settings==2.14.2",
+    "python-statemachine==3.2.0",
 ]
 
 [project.scripts]
