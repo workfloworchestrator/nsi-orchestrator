@@ -14,6 +14,7 @@
 """Provision a multi domain point-to-point connection: RESERVED -> ACTIVATED (or FAILED)."""
 
 from typing import Annotated
+from uuid import UUID
 
 import structlog
 from orchestrator.core.forms import FormPage
@@ -39,7 +40,7 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
     if subscription.vc.state != ConnectionState.RESERVED:
         raise_form_validation_error(f"Connection must be RESERVED to provision, not {subscription.vc.state}")
-    SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
+    SubscriptionId = Annotated[DisplaySubscription, Field(UUID(subscription_id))]
 
     class ProvisionMultiDomainPoint2PointForm(FormPage):
         model_config = ConfigDict(title="Provision connection")

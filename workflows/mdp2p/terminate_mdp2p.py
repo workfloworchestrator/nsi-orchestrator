@@ -12,6 +12,7 @@
 # limitations under the License.
 
 from typing import Annotated
+from uuid import UUID
 
 import structlog
 from orchestrator.core.forms import FormPage
@@ -37,7 +38,7 @@ def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id
         raise_form_validation_error(
             f"Connection must be RESERVED or FAILED to terminate, not {subscription.vc.state}; release it first"
         )
-    SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
+    SubscriptionId = Annotated[DisplaySubscription, Field(UUID(subscription_id))]
 
     class TerminateMultiDomainPoint2PointForm(FormPage):
         subscription_id: SubscriptionId

@@ -14,6 +14,7 @@
 """Release a multi domain point-to-point connection: ACTIVATED -> RESERVED (or FAILED)."""
 
 from typing import Annotated
+from uuid import UUID
 
 import structlog
 from orchestrator.core.forms import FormPage
@@ -39,7 +40,7 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
     if subscription.vc.state != ConnectionState.ACTIVATED:
         raise_form_validation_error(f"Connection must be ACTIVATED to release, not {subscription.vc.state}")
-    SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
+    SubscriptionId = Annotated[DisplaySubscription, Field(UUID(subscription_id))]
 
     class ReleaseMultiDomainPoint2PointForm(FormPage):
         model_config = ConfigDict(title="Release connection")

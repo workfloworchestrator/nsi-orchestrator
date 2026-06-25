@@ -12,6 +12,7 @@
 # limitations under the License.
 
 from typing import Annotated
+from uuid import UUID
 
 import structlog
 from orchestrator.core.forms import FormPage
@@ -27,7 +28,7 @@ logger = structlog.get_logger(__name__)
 
 
 def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id: UUIDstr) -> InputForm:
-    SubscriptionId = Annotated[DisplaySubscription, Field(subscription_id)]
+    SubscriptionId = Annotated[DisplaySubscription, Field(UUID(subscription_id))]
 
     class TerminateServiceDemarcationPointForm(FormPage):
         subscription_id: SubscriptionId
