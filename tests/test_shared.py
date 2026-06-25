@@ -18,17 +18,24 @@ from __future__ import annotations
 import pytest
 from pydantic_forms.exceptions import FormValidationError
 
+from services.aggregator_proxy import AggregatorProxyError
 from services.dds_proxy import DdsProxyError
-from workflows.shared import fetch_for_form
+from workflows.shared import fetch_for_form, raise_form_validation_error
 
 
 def test_fetch_for_form_passes_through_result() -> None:
     assert fetch_for_form(lambda: [1, 2]) == [1, 2]
 
 
-def test_fetch_for_form_converts_dds_error_to_form_validation_error() -> None:
+@pytest.mark.parametrize("error", [DdsProxyError("dds-proxy unavailable"), AggregatorProxyError("aggregator down")])
+def test_fetch_for_form_converts_proxy_errors_to_form_validation_error(error: Exception) -> None:
     def boom() -> list[str]:
-        raise DdsProxyError("dds-proxy unavailable")
+        raise error
 
-    with pytest.raises(FormValidationError, match="dds-proxy unavailable"):
+    with pytest.raises(FormValidationError, match=str(error)):
         fetch_for_form(boom)
+
+
+def test_raise_form_validation_error_raises_with_message() -> None:
+    with pytest.raises(FormValidationError, match="something is wrong"):
+        raise_form_validation_error("something is wrong")
