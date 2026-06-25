@@ -162,6 +162,9 @@ aggregator POSTs the result back to a `callback_step`.
 - **Validate** — assert the connection's stored capacity, STPs, VLANs, global reservation id and
   state still match `GET /reservations/{connectionId}`.
 - **Terminate** — `RESERVED` or `FAILED` → `TERMINATED` via `DELETE /reservations/{connectionId}`.
+- **Reconcile** — re-read `GET /reservations/{connectionId}` and, if `state` drifted from the
+  aggregator's stable state (e.g. a callback was missed after a network problem), update it;
+  transient states (RESERVING/ACTIVATING/DEACTIVATING) are left for a later run.
 
 SDP include/exclude constraints are stored on the subscription but are not yet sent to the
 aggregator, which has no path-constraint field.

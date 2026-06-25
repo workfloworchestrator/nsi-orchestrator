@@ -40,6 +40,7 @@
         "modify_switchingservice": "Modify switching service",
         "modify_topology": "Modify topology",
         "provision_mdp2p": "Provision multi domain point to point",
+        "reconcile_mdp2p": "Reconcile multi domain point to point",
         "reconcile_stp": "Reconcile service termination point",
         "release_mdp2p": "Release multi domain point to point",
         "terminate_mdp2p": "Terminate multi domain point to point",
