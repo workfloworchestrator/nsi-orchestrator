@@ -122,3 +122,40 @@ def dds(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[dict[str, object]]]:
     """Mock the single dds-proxy ``_fetch`` so every ``fetch_*`` (in any module) returns DDS_DATA."""
     monkeypatch.setattr(dds_proxy, "_fetch", lambda path: DDS_DATA[path])
     return DDS_DATA
+
+
+def _create(workflow_key: str, *form_pages: dict[str, object]) -> str:
+    """Run a create workflow (product page + the given form pages) and return the new subscription id."""
+    from tests.workflows import assert_complete, extract_state, product_id, run_workflow
+
+    product_type = {
+        "create_topology": "Topology",
+        "create_switchingservice": "SwitchingService",
+        "create_stp": "ServiceTerminationPoint",
+        "create_sdp": "ServiceDemarcationPoint",
+    }[workflow_key]
+    result, _, _ = run_workflow(workflow_key, [{"product": product_id(product_type)}, *form_pages, {}])
+    assert_complete(result)
+    return str(extract_state(result)["subscription_id"])
+
+
+# Chained seed fixtures: topology -> switching service -> two STPs -> one SDP. A product's workflow
+# tests request the level below it; the create tests re-exercise the create workflow themselves.
+@pytest.fixture
+def topology_subscription(dds: object) -> str:
+    return _create("create_topology", {"topology": "urn:t1"})
+
+
+@pytest.fixture
+def switchingservice_subscription(topology_subscription: str) -> str:
+    return _create("create_switchingservice", {"switching_service_id": "urn:ss1", "switching_service_name": "SS 1"})
+
+
+@pytest.fixture
+def stp_subscriptions(switchingservice_subscription: str) -> dict[str, str]:
+    return {stp_id: _create("create_stp", {"stp_id": stp_id}) for stp_id in ("urn:stp1", "urn:stp2")}
+
+
+@pytest.fixture
+def sdp_subscription(stp_subscriptions: dict[str, str]) -> str:
+    return _create("create_sdp", {"service_demarcation_point": "urn:stp1|urn:stp2", "sdp_name": "SDP 1"})

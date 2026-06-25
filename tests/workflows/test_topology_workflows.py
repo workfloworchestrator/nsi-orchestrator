@@ -15,20 +15,10 @@
 
 from __future__ import annotations
 
-import pytest
 from orchestrator.core.types import SubscriptionLifecycle
 
 from products.product_types.topology import Topology
 from tests.workflows import assert_complete, extract_state, product_id, run_workflow
-
-
-@pytest.fixture
-def topology_subscription(dds: object) -> str:
-    result, _, _ = run_workflow(
-        "create_topology", [{"product": product_id("Topology")}, {"topology": "urn:t1"}, {}]
-    )
-    assert_complete(result)
-    return str(extract_state(result)["subscription_id"])
 
 
 def test_create_topology(dds: object) -> None:
