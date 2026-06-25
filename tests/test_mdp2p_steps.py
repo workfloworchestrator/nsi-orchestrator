@@ -36,12 +36,25 @@ def _vc_sub(**vc_fields: object) -> SimpleNamespace:
     [
         pytest.param("create_mdp2p", "process_reservation_result", "CREATED", "RESERVED", "RESERVED", id="reserve-ok"),
         pytest.param("create_mdp2p", "process_reservation_result", "CREATED", "FAILED", "FAILED", id="reserve-failed"),
-        pytest.param("provision_mdp2p", "process_provision_result", "RESERVED", "ACTIVATED", "ACTIVATED", id="provision-ok"),
-        pytest.param("provision_mdp2p", "process_provision_result", "RESERVED", "FAILED", "FAILED", id="provision-failed"),
+        pytest.param(
+            "provision_mdp2p", "process_provision_result", "RESERVED", "ACTIVATED", "ACTIVATED", id="provision-ok"
+        ),
+        pytest.param(
+            "provision_mdp2p", "process_provision_result", "RESERVED", "FAILED", "FAILED", id="provision-failed"
+        ),
         pytest.param("release_mdp2p", "process_release_result", "ACTIVATED", "RESERVED", "RESERVED", id="release-ok"),
         pytest.param("release_mdp2p", "process_release_result", "ACTIVATED", "FAILED", "FAILED", id="release-failed"),
-        pytest.param("terminate_mdp2p", "process_terminate_result", "RESERVED", "TERMINATED", "TERMINATED", id="terminate-reserved"),
-        pytest.param("terminate_mdp2p", "process_terminate_result", "FAILED", "TERMINATED", "TERMINATED", id="terminate-failed"),
+        pytest.param(
+            "terminate_mdp2p",
+            "process_terminate_result",
+            "RESERVED",
+            "TERMINATED",
+            "TERMINATED",
+            id="terminate-reserved",
+        ),
+        pytest.param(
+            "terminate_mdp2p", "process_terminate_result", "FAILED", "TERMINATED", "TERMINATED", id="terminate-failed"
+        ),
     ],
 )
 def test_process_step_sets_state_and_refreshes_description(

@@ -22,9 +22,7 @@ from tests.workflows import assert_complete, extract_state, product_id, run_work
 
 
 def test_create_topology(dds: object) -> None:
-    result, _, _ = run_workflow(
-        "create_topology", [{"product": product_id("Topology")}, {"topology": "urn:t1"}, {}]
-    )
+    result, _, _ = run_workflow("create_topology", [{"product": product_id("Topology")}, {"topology": "urn:t1"}, {}])
 
     assert_complete(result)
     subscription = Topology.from_subscription(extract_state(result)["subscription_id"])

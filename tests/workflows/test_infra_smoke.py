@@ -21,5 +21,10 @@ from sqlalchemy import select
 
 def test_database_is_migrated() -> None:
     product_types = set(db.session.scalars(select(ProductTable.product_type)))
-    assert {"Topology", "SwitchingService", "ServiceTerminationPoint", "ServiceDemarcationPoint",
-            "MultiDomainPoint2Point"} <= product_types
+    assert {
+        "Topology",
+        "SwitchingService",
+        "ServiceTerminationPoint",
+        "ServiceDemarcationPoint",
+        "MultiDomainPoint2Point",
+    } <= product_types

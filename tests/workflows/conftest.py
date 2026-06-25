@@ -53,8 +53,20 @@ DDS_DATA: dict[str, list[dict[str, object]]] = {
     "/topologies": [{"id": "urn:t1", "name": "Topo 1"}],
     "/switching-services": [{"id": "urn:ss1", "topologyId": "urn:t1"}],
     "/service-termination-points": [
-        {"id": "urn:stp1", "name": "STP 1", "capacity": 1000, "labelGroup": "1000-1999", "switchingServiceId": "urn:ss1"},
-        {"id": "urn:stp2", "name": "STP 2", "capacity": 2000, "labelGroup": "2000-2999", "switchingServiceId": "urn:ss1"},
+        {
+            "id": "urn:stp1",
+            "name": "STP 1",
+            "capacity": 1000,
+            "labelGroup": "1000-1999",
+            "switchingServiceId": "urn:ss1",
+        },
+        {
+            "id": "urn:stp2",
+            "name": "STP 2",
+            "capacity": 2000,
+            "labelGroup": "2000-2999",
+            "switchingServiceId": "urn:ss1",
+        },
     ],
     "/service-demarcation-points": [{"stpAId": "urn:stp1", "stpZId": "urn:stp2"}],
 }

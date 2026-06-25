@@ -78,7 +78,9 @@ def _sdp_subscription() -> SimpleNamespace:
 def test_validate_sdp_passes_when_pair_present(monkeypatch: pytest.MonkeyPatch) -> None:
     module = importlib.import_module("workflows.sdp.validate_sdp")
     # The pair is order-independent (a frozenset), so b<->a still matches.
-    monkeypatch.setattr(module, "fetch_service_demarcation_points", lambda: [SimpleNamespace(stp_a_id="b", stp_z_id="a")])
+    monkeypatch.setattr(
+        module, "fetch_service_demarcation_points", lambda: [SimpleNamespace(stp_a_id="b", stp_z_id="a")]
+    )
 
     subscription = _sdp_subscription()
     assert module.validate_sdp_present_in_dds.__wrapped__(subscription=subscription)["subscription"] is subscription
@@ -86,7 +88,9 @@ def test_validate_sdp_passes_when_pair_present(monkeypatch: pytest.MonkeyPatch) 
 
 def test_validate_sdp_raises_when_pair_gone(monkeypatch: pytest.MonkeyPatch) -> None:
     module = importlib.import_module("workflows.sdp.validate_sdp")
-    monkeypatch.setattr(module, "fetch_service_demarcation_points", lambda: [SimpleNamespace(stp_a_id="a", stp_z_id="c")])
+    monkeypatch.setattr(
+        module, "fetch_service_demarcation_points", lambda: [SimpleNamespace(stp_a_id="a", stp_z_id="c")]
+    )
 
     with pytest.raises(AssertionError):
         module.validate_sdp_present_in_dds.__wrapped__(subscription=_sdp_subscription())

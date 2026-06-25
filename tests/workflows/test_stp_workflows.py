@@ -66,7 +66,13 @@ def test_reconcile_stp_syncs_capacity(stp_subscriptions: dict[str, str], monkeyp
         dds_proxy,
         "_fetch",
         lambda _path: [
-            {"id": "urn:stp1", "name": "STP 1", "capacity": 5000, "labelGroup": "1000-1999", "switchingServiceId": "urn:ss1"}
+            {
+                "id": "urn:stp1",
+                "name": "STP 1",
+                "capacity": 5000,
+                "labelGroup": "1000-1999",
+                "switchingServiceId": "urn:ss1",
+            }
         ],
     )
     result, _, _ = run_workflow("reconcile_stp", [{"subscription_id": subscription_id}])
