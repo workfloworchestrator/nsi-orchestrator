@@ -107,10 +107,17 @@ def resume_callback(
     Mirrors what the callback endpoint does (``state[result_key] = payload``) and runs the remaining
     steps (validate + cleanup + anything after the callback step) synchronously.
     """
-    awaiting_step, awaiting_process = step_log[-1]
+    awaiting_process = step_log[-1][1]
     assert awaiting_process.isawaitingcallback(), f"Process is not awaiting a callback: {awaiting_process}"
-    state = {**awaiting_process.unwrap(), result_key: callback_result}
-    remaining_steps = process.workflow.steps[len(step_log) :]
-    resumed = process.update(log=remaining_steps, state=AwaitingCallback(state))
+    state = awaiting_process.unwrap()
+    # The callback step is a single step_group in workflow.steps; resume by re-entering that group
+    # (named in __sub_step "<group> - Await callback") with the payload injected, as the callback
+    # endpoint does. The group then runs its await + validate + cleanup and the workflow continues.
+    group_name = str(state.get("__sub_step", "")).rsplit(" - ", 1)[0]
+    group_index = next(i for i, step in enumerate(process.workflow.steps) if step.name == group_name)
+    resumed = process.update(
+        log=process.workflow.steps[group_index:],
+        state=AwaitingCallback({**state, result_key: callback_result}),
+    )
     result = runwf(resumed, _store_step(step_log))
     return result, step_log
