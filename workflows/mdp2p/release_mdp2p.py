@@ -80,9 +80,10 @@ def release_mdp2p() -> StepList:
         begin
         >> set_status(SubscriptionLifecycle.PROVISIONING)
         >> callback_step(
-            name="Release connection",
+            name=f"Release connection (timeout {settings.aggregator_callback_timeout} seconds)",
             action_step=release_connection,
             validate_step=process_release_result,
+            timeout=settings.aggregator_callback_timeout,
         )
         >> set_status(SubscriptionLifecycle.ACTIVE)
     )

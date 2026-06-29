@@ -64,7 +64,8 @@ def process_terminate_result(subscription: MultiDomainPoint2Point, callback_resu
 @terminate_workflow(initial_input_form=terminate_initial_input_form_generator)
 def terminate_mdp2p() -> StepList:
     return begin >> callback_step(
-        name="Terminate connection",
+        name=f"Terminate connection (timeout {settings.aggregator_callback_timeout} seconds)",
         action_step=terminate_connection,
         validate_step=process_terminate_result,
+        timeout=settings.aggregator_callback_timeout,
     )

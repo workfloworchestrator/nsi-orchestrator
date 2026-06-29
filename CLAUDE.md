@@ -54,7 +54,11 @@ Both need the pgvector extension.
   request with a `callback_route`, the aggregator-proxy POSTs the result back, and the validate step
   reads it from `callback_result`. `callback_step(...)` is a single `step_group` in `workflow.steps`
   (it is *not* expanded into sub-steps); the awaiting state carries
-  `__sub_step == "<group> - Await callback"`.
+  `__sub_step == "<group> - Await callback"`. Each passes `timeout=settings.aggregator_callback_timeout`
+  (540s) as a backstop: a step still awaiting after the timeout is failed by orchestrator-core's
+  sweep task so it can be retried/aborted. **Retrying a callback step replays the whole group, so the
+  action step re-fires the request** — the aggregator-proxy handles that idempotently (reserve dedups
+  on `globalReservationId`; provision/release/terminate re-deliver when already in the target state).
 - **Workflow input pages** (list of form pages): create `[{product}, {fields}, {summary}]`; modify
   `[{subscription_id}, {fields}, {summary}]`; validate/reconcile `[{subscription_id}]`; terminate
   `[{subscription_id}, {}]`.

@@ -82,7 +82,7 @@ class AggregatorReservation(BaseModel):
 def _client() -> httpx.Client:
     return httpx.Client(
         base_url=settings.aggregator_proxy_base_url,
-        timeout=settings.aggregator_proxy_timeout_seconds,
+        timeout=settings.aggregator_proxy_timeout,
         **client_kwargs(
             mtls_enabled=settings.aggregator_proxy_mtls_enabled,
             client_cert=settings.aggregator_proxy_client_cert,

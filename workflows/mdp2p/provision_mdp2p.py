@@ -80,9 +80,10 @@ def provision_mdp2p() -> StepList:
         begin
         >> set_status(SubscriptionLifecycle.PROVISIONING)
         >> callback_step(
-            name="Provision connection",
+            name=f"Provision connection (timeout {settings.aggregator_callback_timeout} seconds)",
             action_step=provision_connection,
             validate_step=process_provision_result,
+            timeout=settings.aggregator_callback_timeout,
         )
         >> set_status(SubscriptionLifecycle.ACTIVE)
     )

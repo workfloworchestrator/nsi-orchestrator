@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Base URL of the nsi-dds-proxy REST API (topology data source).
     dds_proxy_base_url: str = "http://localhost:8080"
-    dds_proxy_timeout_seconds: float = 30.0
+    dds_proxy_timeout: float = 30.0  # seconds
 
     # Authentication mode against the dds-proxy.
     #
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # Base URL of the nsi-aggregator-proxy REST API (connection reserve/provision/release).
     aggregator_proxy_base_url: str = "http://localhost:8080"
-    aggregator_proxy_timeout_seconds: float = 30.0
+    aggregator_proxy_timeout: float = 30.0  # seconds
 
     # Authentication against the aggregator-proxy mirrors the dds-proxy: real mTLS when
     # deployed, edge identity headers as a local-development shortcut. See the dds_proxy_*
@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     aggregator_proxy_ca_bundle: str | None = None
     aggregator_proxy_auth_method: str = "x509"
     aggregator_proxy_client_dn: str = "CN=claude@local.laptop"
+
+    # Backstop timeout for the aggregator callback_steps (reserve/provision/release/terminate). Sized
+    # above the proxy's own worst case (~480s: NSI_TIMEOUT 180 + DATAPLANE_TIMEOUT 300 in sequential
+    # phases) plus the ~30s timeout-sweep granularity, so it only fires when the proxy never reports
+    # back at all rather than racing a proxy that is about to deliver a real error.
+    aggregator_callback_timeout: int = 540  # seconds
 
     # NSA URNs exchanged with the aggregator: who is asking (this orchestrator) and which
     # aggregator answers. provider_nsa must match the aggregator-proxy's configured PROVIDER_NSA.

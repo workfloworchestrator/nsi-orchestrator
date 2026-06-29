@@ -198,7 +198,10 @@ connection state machine (`CREATED → RESERVED → ACTIVATED`, with `terminate`
 step able to end in `FAILED`). The aggregator owns the detailed NSI lifecycle and rejects illegal
 operations itself; this state machine is the orchestrator's local view, persisted on the block. The
 reserve, provision, release and terminate operations are asynchronous: each fires a request and the
-aggregator POSTs the result back to a `callback_step`.
+aggregator POSTs the result back to a `callback_step`. The wait has a backstop timeout
+(`AGGREGATOR_CALLBACK_TIMEOUT`); if no callback arrives within it the step is failed so it can be
+retried or aborted. A retried step re-fires the request, which the Aggregator Proxy handles
+idempotently.
 
 - **Create** — form for a description, source/destination STP and VLAN, the service speed, and SDPs
   to include/exclude. Each STP option is labelled with its still-free VLANs (its DDS range minus the
@@ -228,7 +231,7 @@ Configuration is read from environment variables.
 | `DATABASE_URI` | _orchestrator-core default_ | PostgreSQL connection string for the orchestrator database. |
 | `TRANSLATIONS_DIR` | `translations` _(set by the app)_ | Directory of project translation files (workflow names and form-field labels) served at `/api/translations/{lang}`. |
 | `DDS_PROXY_BASE_URL` | `http://localhost:8080` | Base URL of the nsi-dds-proxy REST API. |
-| `DDS_PROXY_TIMEOUT_SECONDS` | `30.0` | HTTP timeout for DDS Proxy requests. |
+| `DDS_PROXY_TIMEOUT` | `30.0` | HTTP timeout (seconds) for DDS Proxy requests. |
 | `DDS_PROXY_MTLS_ENABLED` | `false` | Authenticate to the DDS Proxy with mutual TLS. Enable in deployments. |
 | `DDS_PROXY_CLIENT_CERT` | _(unset)_ | Path to the PEM client certificate (used when mTLS is enabled). |
 | `DDS_PROXY_CLIENT_KEY` | _(unset)_ | Path to the PEM private key (used when mTLS is enabled). |
@@ -241,7 +244,7 @@ sending the `X-Auth-Method` / `X-Client-DN` identity headers it trusts at its ed
 shortcut only. In a deployment, enable mTLS and configure the certificate, key, and CA bundle.
 
 The Aggregator Proxy is configured the same way, with `AGGREGATOR_PROXY_*` variables that mirror the
-`DDS_PROXY_*` ones above (`AGGREGATOR_PROXY_BASE_URL`, `AGGREGATOR_PROXY_TIMEOUT_SECONDS`,
+`DDS_PROXY_*` ones above (`AGGREGATOR_PROXY_BASE_URL`, `AGGREGATOR_PROXY_TIMEOUT`,
 `AGGREGATOR_PROXY_MTLS_ENABLED`, `AGGREGATOR_PROXY_CLIENT_CERT`, `AGGREGATOR_PROXY_CLIENT_KEY`,
 `AGGREGATOR_PROXY_CA_BUNDLE`, `AGGREGATOR_PROXY_AUTH_METHOD`, `AGGREGATOR_PROXY_CLIENT_DN`). In
 addition:
@@ -251,6 +254,7 @@ addition:
 | `REQUESTER_NSA` | `urn:ogf:network:example.net:2026:nsa:nsi-orchestrator` | NSA URN this orchestrator presents as the requester. |
 | `PROVIDER_NSA` | `urn:ogf:network:example.net:2026:nsa:safnari` | NSA URN of the target aggregator; must match the Aggregator Proxy's configured provider NSA. |
 | `ORCHESTRATOR_CALLBACK_BASE_URL` | `http://localhost:8080` | This orchestrator's externally reachable base URL; the Aggregator Proxy POSTs reservation results to `<base>/api/processes/{id}/callback/{token}`. Override in every deployment. |
+| `AGGREGATOR_CALLBACK_TIMEOUT` | `540` | Backstop timeout (seconds) for the aggregator callback steps; a step still awaiting a callback after this is failed so it can be retried or aborted. Sized above the proxy's worst case (`NSI_TIMEOUT` + `DATAPLANE_TIMEOUT`) plus the ~30s sweep granularity. |
 
 ### Default customer
 

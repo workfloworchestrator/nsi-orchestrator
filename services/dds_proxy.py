@@ -118,7 +118,7 @@ def _fetch(path: str) -> list[dict[str, Any]]:
     """
     with httpx.Client(
         base_url=settings.dds_proxy_base_url,
-        timeout=settings.dds_proxy_timeout_seconds,
+        timeout=settings.dds_proxy_timeout,
         **_client_kwargs(),
     ) as client:
         try:

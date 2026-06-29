@@ -211,8 +211,9 @@ def create_mdp2p() -> StepList:
         >> construct_mdp2p_model
         >> store_process_subscription()
         >> callback_step(
-            name="Reserve connection",
+            name=f"Reserve connection (timeout {settings.aggregator_callback_timeout} seconds)",
             action_step=reserve_connection,
             validate_step=process_reservation_result,
+            timeout=settings.aggregator_callback_timeout,
         )
     )
