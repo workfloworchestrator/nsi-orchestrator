@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "httpx==0.28.1",
-    "orchestrator-core==5.0.4",
+    # git ref: callback_step timeout (orchestrator-core#1744) is not in a release yet; pin the
+    # version once it is merged and a 5.1.x is published.
+    "orchestrator-core @ git+https://github.com/workfloworchestrator/orchestrator-core.git@5b12a467f070e326c47cf325707101676e27bb84",
     "pydantic-settings==2.14.2",
     "python-statemachine==3.2.0",
 ]
