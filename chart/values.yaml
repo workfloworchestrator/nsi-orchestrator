@@ -1,0 +1,160 @@
+# Default values for nsi-orchestrator.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/workfloworchestrator/nsi-orchestrator
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ConfigMap with nsi-orchestrator environment variables mounted into the pod (and the migration
+# init container). Uncomment and set per environment; DATABASE_URI and any client secret come from
+# secretProviderClass, not here. See settings.py and the orchestrator-core / oauth2-lib settings.
+#env:
+#  # Upstream proxies (reach the in-cluster Services; mTLS only needed for their public endpoints).
+#  DDS_PROXY_BASE_URL: "http://dds-proxy"
+#  AGGREGATOR_PROXY_BASE_URL: "http://aggregator-proxy"
+#  # NSA identities and the callback URL the aggregator-proxy POSTs results back to.
+#  REQUESTER_NSA: "urn:ogf:network:example.net:2026:nsa:nsi-orchestrator"
+#  PROVIDER_NSA: "urn:ogf:network:example.net:2026:nsa:safnari"
+#  ORCHESTRATOR_CALLBACK_BASE_URL: "https://orchestrator.example.net"
+#  # Authentication (oauth2-lib) pointed at the OIDC provider; the operators gate (auth.py).
+#  OAUTH2_ACTIVE: "true"
+#  OAUTH2_AUTHORIZATION_ACTIVE: "true"
+#  OAUTH2_RESOURCE_SERVER_ID: "orchestrator-rs.example.net"
+#  OIDC_BASE_URL: "https://proxy.example.net"
+#  OIDC_CONF_URL: "https://proxy.example.net/.well-known/openid-configuration"
+#  ALLOWED_GROUPS: '["urn:example:group:operators"]'
+#  GROUPS_CLAIM: "eduperson_entitlement"
+#  LOG_LEVEL: "INFO"
+
+serviceAccount:
+  create: false
+  automount: true
+  annotations: {}
+  # Name to use; generated from the fullname template when empty and create is true.
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/issuer: harica
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+# Expose the service via gateway-api HTTPRoute instead of an Ingress. Requires Gateway API
+# resources and a controller in the cluster (see https://gateway-api.sigs.k8s.io/guides/).
+httpRoute:
+  enabled: false
+  annotations: {}
+  # Gateways this route attaches to.
+  parentRefs:
+  - name: gateway
+    sectionName: http
+    # namespace: default
+  hostnames:
+  - chart-example.local
+  # The API is served under /api (REST, /api/graphql, /api/ws/events); the UI chart attaches its
+  # own route for / on the same listener.
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api
+
+# Leave empty to let the cluster decide; set requests/limits per environment.
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+# orchestrator-core serves a database-backed health check at /api/health/ (no auth required).
+livenessProbe:
+  httpGet:
+    path: /api/health/
+    port: 8080
+  initialDelaySeconds: 15
+readinessProbe:
+  httpGet:
+    path: /api/health/
+    port: 8080
+  initialDelaySeconds: 5
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# Pulls DATABASE_URI (and any client secret) from a cloud key vault via the secrets-store CSI
+# driver, exposing them as the {{ .Release.Name }}-secret used by envFrom. The deployment
+# (ApplicationSet) sets the real provider/objects; disabled by default for local rendering.
+secretProviderClass:
+  enabled: false
+  provider: YourKvProvider
+  name: "example-kv"
+  keyVaultName: "example-kv"
+  tenantId: "00000000-0000-0000-0000-000000000000"
+  nodePublishSecretRefNname: "kv-sp-secret"
+  env:
+    #- name: "HOST"
+    #  value: "db.example.domain"
+  objects:
+    - key: "DATABASE_URI"
+      objectName: "nsi-orchestrator-db-uri"
+    #- key: "OAUTH2_RESOURCE_SERVER_SECRET"
+    #  objectName: "nsi-orchestrator-oauth2-client-secret"
+
+# Additional volumes / volumeMounts on the StatefulSet.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
