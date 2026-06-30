@@ -19,7 +19,7 @@ Python 3.13, managed with `uv`.
 uv sync                                            # install runtime + dev deps
 export DATABASE_URI=postgresql+psycopg://nsi:nsi@localhost/nsi
 uv run python main.py db upgrade heads             # apply migrations
-uv run uvicorn wsgi:app --port 8080                # run the API
+OAUTH2_ACTIVE=false uv run uvicorn wsgi:app --port 8080  # run the API (auth off for local dev)
 uv run ruff check . && uv run ruff format --check . # lint + format
 uv run mypy .                                      # types (strict, whole tree except migrations)
 uv run pytest                                      # tests (needs an nsi-test DB with pgvector)
@@ -50,6 +50,14 @@ Both need the pgvector extension.
 
 ## Patterns specific to this repo
 
+- **Auth gate (`auth.py` + `wsgi.py`).** A coarse in-process check plugged into orchestrator-core's
+  `AuthManager` for REST and GraphQL: a request is allowed only when the token's `groups_claim`
+  (default `eduperson_entitlement`) intersects `settings.allowed_groups`. It fails closed and bypasses
+  only when `OAUTH2_ACTIVE` is off. `wsgi.py` also disables the docs/GraphiQL/introspection schema
+  surface and **refuses to boot** when `OAUTH2_ACTIVE` is on but `OAUTH2_AUTHORIZATION_ACTIVE` is off or
+  `allowed_groups` is empty (orchestrator-core's GraphQL layer silently skips authz when that flag is
+  off). `OAUTH2_ACTIVE` defaults on, so local dev runs with `OAUTH2_ACTIVE=false`; the real group lives
+  in deployment config, never in the source default.
 - **Async aggregator operations use `callback_step`.** reserve/provision/release/terminate fire a
   request with a `callback_route`, the aggregator-proxy POSTs the result back, and the validate step
   reads it from `callback_result`. `callback_step(...)` is a single `step_group` in `workflow.steps`

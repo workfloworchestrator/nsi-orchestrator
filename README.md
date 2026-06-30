@@ -278,11 +278,14 @@ orchestrator-core 5.0).
 uv sync                                                   # install runtime + dev dependencies
 createdb nsi && export DATABASE_URI=postgresql+psycopg://nsi:nsi@localhost/nsi
 uv run python main.py db upgrade heads                    # create the schema
-uv run uvicorn wsgi:app --host 0.0.0.0 --port 8080        # run the orchestrator API
+OAUTH2_ACTIVE=false uv run uvicorn wsgi:app --host 0.0.0.0 --port 8080  # run the API (auth off locally)
 ```
 
 `main.py` exposes the orchestrator-core CLI (`db`, `scheduler`, `generate`, …); `wsgi:app` is the
-FastAPI/`OrchestratorCore` application served in the container (see the `Dockerfile`).
+FastAPI/`OrchestratorCore` application served in the container (see the `Dockerfile`). The app gates
+REST and GraphQL on membership of `ALLOWED_GROUPS` (an OIDC groups claim); with the orchestrator-core
+default `OAUTH2_ACTIVE=true` it refuses to start unless a group is configured, so local runs set
+`OAUTH2_ACTIVE=false`.
 
 ### Adding or changing a product
 

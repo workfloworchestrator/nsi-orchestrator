@@ -12,16 +12,47 @@
 # limitations under the License.
 
 from pathlib import Path
+from typing import Any
 
+from graphql.validation import NoSchemaIntrospectionCustomRule
+from oauth2_lib.settings import oauth2lib_settings
 from orchestrator.core import OrchestratorCore
+from orchestrator.core.graphql import Mutation, Query
+from orchestrator.core.graphql.schema import get_extensions
 from orchestrator.core.settings import app_settings
+from strawberry.extensions import AddValidationRules
 
 import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  Registers the topology workflow instances
+from auth import GroupGate, GroupGateGraphql
+from settings import settings
+
+# Fail fast rather than boot silently open. orchestrator-core's GraphQL layer skips the
+# authorization check entirely when OAUTH2_AUTHORIZATION_ACTIVE is off, so wherever authentication
+# is enabled both flags must be on and a group must be configured for the gate to bite.
+if oauth2lib_settings.OAUTH2_ACTIVE:
+    if not oauth2lib_settings.OAUTH2_AUTHORIZATION_ACTIVE:
+        raise RuntimeError("OAUTH2_AUTHORIZATION_ACTIVE must be true when OAUTH2_ACTIVE is true")
+    if not settings.allowed_groups:
+        raise RuntimeError("ALLOWED_GROUPS must be set when OAUTH2_ACTIVE is true")
 
 # Serve our project translations from ./translations unless overridden via TRANSLATIONS_DIR.
 if app_settings.TRANSLATIONS_DIR is None:
     app_settings.TRANSLATIONS_DIR = Path("translations")
 
-app = OrchestratorCore(base_settings=app_settings)
-app.register_graphql()
+# Drop the GraphiQL playground; the API is internet-facing with only the in-app gate in front.
+app_settings.SERVE_GRAPHQL_UI = None
+
+# Disable the OpenAPI docs endpoints unless explicitly enabled for local development, so a
+# deployment does not expose its REST API schema.
+# FastAPI accepts None for these to disable the endpoints, though orchestrator-core types them str.
+docs: dict[str, Any] = {} if settings.serve_api_docs else {"docs_url": None, "openapi_url": None, "redoc_url": None}
+app = OrchestratorCore(base_settings=app_settings, **docs)
+
+# Restrict access to members of settings.allowed_groups over both REST and GraphQL.
+app.register_authorization(GroupGate(settings.allowed_groups, settings.groups_claim))
+app.register_graphql_authorization(GroupGateGraphql(settings.allowed_groups, settings.groups_claim))
+
+# Keep orchestrator-core's default GraphQL extensions and additionally forbid schema introspection.
+extensions = [*get_extensions(Mutation, Query), AddValidationRules([NoSchemaIntrospectionCustomRule])]
+app.register_graphql(extensions=extensions)
