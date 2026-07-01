@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from graphql.validation import NoSchemaIntrospectionCustomRule
+from oauth2_lib.fastapi import OIDCUserModel
 from oauth2_lib.settings import oauth2lib_settings
 from orchestrator.core import OrchestratorCore
 from orchestrator.core.graphql import Mutation, Query
@@ -24,7 +25,7 @@ from strawberry.extensions import AddValidationRules
 
 import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  Registers the topology workflow instances
-from auth import GroupGate, GroupGateGraphql
+from auth import GroupGate, GroupGateGraphql, UserinfoOIDCAuth
 from settings import settings
 
 # Fail fast rather than boot silently open. orchestrator-core's GraphQL layer skips the
@@ -49,7 +50,17 @@ app_settings.SERVE_GRAPHQL_UI = None
 docs: dict[str, Any] = {} if settings.serve_api_docs else {"docs_url": None, "openapi_url": None, "redoc_url": None}
 app = OrchestratorCore(base_settings=app_settings, **docs)
 
-# Restrict access to members of settings.allowed_groups over both REST and GraphQL.
+# Authenticate bearer tokens via the OIDC provider's userinfo endpoint (orchestrator-core ships
+# only the abstract OIDCAuth), then restrict access to members of allowed_groups on REST + GraphQL.
+app.register_authentication(
+    UserinfoOIDCAuth(
+        openid_url=oauth2lib_settings.OIDC_BASE_URL,
+        openid_config_url=oauth2lib_settings.OIDC_CONF_URL,
+        resource_server_id=oauth2lib_settings.OAUTH2_RESOURCE_SERVER_ID,
+        resource_server_secret=oauth2lib_settings.OAUTH2_RESOURCE_SERVER_SECRET,
+        oidc_user_model_cls=OIDCUserModel,
+    )
+)
 app.register_authorization(GroupGate(settings.allowed_groups, settings.groups_claim))
 app.register_graphql_authorization(GroupGateGraphql(settings.allowed_groups, settings.groups_claim))
 

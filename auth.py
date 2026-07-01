@@ -22,10 +22,14 @@ yields no groups and is denied — and only bypasses for local development, wher
 """
 
 from collections.abc import Iterable
+from http import HTTPStatus
 
-from oauth2_lib.fastapi import Authorization, GraphqlAuthorization, OIDCUserModel, RequestPath
+from fastapi import HTTPException
+from httpx import AsyncClient
+from oauth2_lib.fastapi import Authorization, GraphqlAuthorization, OIDCAuth, OIDCUserModel, RequestPath
 from oauth2_lib.settings import oauth2lib_settings
 from starlette.requests import HTTPConnection
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 
 def _token_groups(user: OIDCUserModel | None, claim: str) -> set[str]:
@@ -75,3 +79,25 @@ class GroupGateGraphql(GraphqlAuthorization):
         if not oauth2lib_settings.OAUTH2_ACTIVE:
             return None
         return _is_member(user, self.allowed_groups, self.groups_claim)
+
+
+class UserinfoOIDCAuth(OIDCAuth):
+    """Authenticate a bearer token against the OIDC provider's userinfo endpoint.
+
+    orchestrator-core ships only the abstract ``OIDCAuth`` (its ``userinfo`` raises
+    ``NotImplementedError``), so a deployment must supply a concrete one. This validates the token
+    by calling the provider's discovered ``userinfo_endpoint`` with it — which works with opaque
+    access tokens and needs no resource-server credentials — and returns the claims as the user.
+    """
+
+    async def userinfo(self, async_request: AsyncClient, token: str) -> OIDCUserModel:
+        # authenticate() calls check_openid_config() first, so openid_config is populated here.
+        if self.openid_config is None:
+            raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail="OIDC config not loaded")
+        response = await async_request.get(
+            self.openid_config.userinfo_endpoint,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if response.status_code != HTTPStatus.OK:
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+        return self.user_model_cls(response.json())
