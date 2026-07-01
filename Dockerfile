@@ -12,7 +12,13 @@ RUN uv build --no-cache --wheel --out-dir dist
 # Final stage
 FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:099503f2fe3e97d8b3c0bf972203a18594abf0f546599a04f457c658ee5b3943
 COPY --from=build /app/dist/*.whl /tmp/
-RUN uv pip install --system --no-cache /tmp/*.whl && rm /tmp/*.whl
+# git is needed only to fetch the orchestrator-core git dependency (see pyproject); it is added
+# transiently and removed so it stays out of the runtime image. Drop it once orchestrator-core is
+# pinned to a release again.
+RUN apk add --no-cache --virtual .build-deps git \
+    && uv pip install --system --no-cache /tmp/*.whl \
+    && rm /tmp/*.whl \
+    && apk del .build-deps
 RUN addgroup -g 1000 orchestrator && adduser -D -u 1000 -G orchestrator orchestrator
 USER orchestrator
 WORKDIR /home/orchestrator
