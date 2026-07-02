@@ -1318,7 +1318,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
-    { name = "orchestrator-core", git = "https://github.com/workfloworchestrator/orchestrator-core.git?rev=5b12a467f070e326c47cf325707101676e27bb84" },
+    { name = "orchestrator-core", git = "https://github.com/workfloworchestrator/orchestrator-core.git?rev=d457f1d79af29d147b8dcaa6ed0641de1b76b7e0" },
     { name = "pydantic-settings", specifier = "==2.14.2" },
     { name = "python-statemachine", specifier = "==3.2.0" },
 ]
@@ -1440,7 +1440,7 @@ wheels = [
 [[package]]
 name = "orchestrator-core"
 version = "5.1.0"
-source = { git = "https://github.com/workfloworchestrator/orchestrator-core.git?rev=5b12a467f070e326c47cf325707101676e27bb84#5b12a467f070e326c47cf325707101676e27bb84" }
+source = { git = "https://github.com/workfloworchestrator/orchestrator-core.git?rev=d457f1d79af29d147b8dcaa6ed0641de1b76b7e0#d457f1d79af29d147b8dcaa6ed0641de1b76b7e0" }
 dependencies = [
     { name = "alembic" },
     { name = "anyio" },

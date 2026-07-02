@@ -8,7 +8,7 @@ dependencies = [
     "httpx==0.28.1",
     # git ref: callback_step timeout (orchestrator-core#1744) is not in a release yet; pin the
     # version once it is merged and a 5.1.x is published.
-    "orchestrator-core @ git+https://github.com/workfloworchestrator/orchestrator-core.git@5b12a467f070e326c47cf325707101676e27bb84",
+    "orchestrator-core @ git+https://github.com/workfloworchestrator/orchestrator-core.git@d457f1d79af29d147b8dcaa6ed0641de1b76b7e0",
     "pydantic-settings==2.14.2",
     "python-statemachine==3.2.0",
 ]
@@ -21,7 +21,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["main", "settings", "wsgi"]
+py-modules = ["auth", "main", "settings", "wsgi"]
 
 [tool.setuptools.packages.find]
 include = ["products*", "workflows*", "services*"]

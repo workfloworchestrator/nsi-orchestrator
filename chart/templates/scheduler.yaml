@@ -1,0 +1,95 @@
+{{- if .Values.scheduler.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nsi-orchestrator.fullname" . }}-scheduler
+  labels:
+    {{- include "nsi-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
+spec:
+  # The scheduler is a singleton; never run more than one replica.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "nsi-orchestrator.name" . }}-scheduler
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        automation.surf.net/environment-checksum: {{ include (print $.Template.BasePath "/environment-configmap.yaml") . | sha256sum }}
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "nsi-orchestrator.name" . }}-scheduler
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "nsi-orchestrator.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Seed the standard periodic schedules (idempotent), retrying until the database and redis are
+      # reachable, then the main container runs the loop that drains the queue and executes tasks.
+      initContainers:
+        - name: {{ .Chart.Name }}-load-schedule
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "until python -m main scheduler load-initial-schedule; do echo 'waiting for db/redis...'; sleep 3; done"]
+          {{- include "nsi-orchestrator.schedulerEnv" . | nindent 10 }}
+          {{- if .Values.secretProviderClass.enabled }}
+          volumeMounts:
+            - name: secret-store
+              mountPath: "/mnt/secret-store"
+              readOnly: true
+          {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}-scheduler
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "main", "scheduler", "run"]
+          {{- include "nsi-orchestrator.schedulerEnv" . | nindent 10 }}
+          {{- with .Values.scheduler.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.secretProviderClass.enabled }}
+          volumeMounts:
+            - name: secret-store
+              mountPath: "/mnt/secret-store"
+              readOnly: true
+          {{- end }}
+      {{- if .Values.secretProviderClass.enabled }}
+      volumes:
+        - name: secret-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Release.Name }}-secretproviderclass
+            nodePublishSecretRef:
+              name: {{ .Values.secretProviderClass.nodePublishSecretRefNname }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -22,10 +22,12 @@ from orchestrator.core.log_config import LOGGER_OVERRIDES
 
 import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  Registers the topology workflow instances
+from settings import use_psycopg_driver
 
 
 def init_cli_app() -> typer.Typer:
     initialise_logging(LOGGER_OVERRIDES)
+    use_psycopg_driver()
     init_database(app_settings)
     # Serve our project translations from ./translations unless overridden via TRANSLATIONS_DIR.
     if app_settings.TRANSLATIONS_DIR is None:

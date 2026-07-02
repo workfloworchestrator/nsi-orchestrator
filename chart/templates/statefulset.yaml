@@ -44,7 +44,7 @@ spec:
           {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["python", "main.py", "db", "upgrade", "heads"]
+          command: ["python", "-m", "main", "db", "upgrade", "heads"]
           envFrom:
           {{- if .Values.secretProviderClass.enabled }}
             - secretRef:
@@ -74,6 +74,10 @@ spec:
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
+          {{- end }}
+          {{- if .Values.redis.enabled }}
+            - name: CACHE_URI
+              value: "redis://{{ include "nsi-orchestrator.fullname" . }}-redis:6379/0"
           {{- end }}
           envFrom:
           {{- if .Values.secretProviderClass.enabled }}

@@ -51,6 +51,26 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+envFrom (config + secret) and the CACHE_URI env for the scheduler containers.
+*/}}
+{{- define "nsi-orchestrator.schedulerEnv" -}}
+envFrom:
+{{- if .Values.secretProviderClass.enabled }}
+  - secretRef:
+      name: {{ .Release.Name }}-secret
+{{- end }}
+{{- if .Values.env }}
+  - configMapRef:
+      name: {{ .Release.Name }}-environment
+{{- end }}
+{{- if .Values.redis.enabled }}
+env:
+  - name: CACHE_URI
+    value: "redis://{{ include "nsi-orchestrator.fullname" . }}-redis:6379/0"
+{{- end }}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "nsi-orchestrator.serviceAccountName" -}}

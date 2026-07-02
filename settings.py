@@ -82,3 +82,24 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def _psycopg_dsn(uri: str) -> str:
+    """Force the psycopg (v3) driver on a bare postgresql:// DSN; leave any other scheme untouched."""
+    if uri.startswith("postgresql://"):
+        return "postgresql+psycopg://" + uri.removeprefix("postgresql://")
+    return uri
+
+
+def use_psycopg_driver() -> None:
+    """Rewrite DATABASE_URI to the psycopg (v3) driver before orchestrator-core builds the engine.
+
+    A bare ``postgresql://`` DSN makes SQLAlchemy select its default psycopg2 dialect, which this
+    image does not ship (it has psycopg v3). Call before init_database / OrchestratorCore.
+    """
+    from orchestrator.core.settings import SecretPostgresDsn, app_settings
+
+    uri = str(app_settings.DATABASE_URI.get_secret_value())
+    fixed = _psycopg_dsn(uri)
+    if fixed != uri:
+        app_settings.DATABASE_URI = SecretPostgresDsn(fixed)  # type: ignore[arg-type]
