@@ -15,9 +15,10 @@
 
 from __future__ import annotations
 
+import pytest
 from pydantic_settings import BaseSettings
 
-from settings import Settings, settings
+from settings import Settings, _psycopg_dsn, settings
 
 
 def test_settings_is_basesettings_subclass() -> None:
@@ -26,3 +27,16 @@ def test_settings_is_basesettings_subclass() -> None:
 
 def test_module_singleton_instantiated() -> None:
     assert isinstance(settings, Settings)
+
+
+@pytest.mark.parametrize(
+    ("uri", "expected"),
+    [
+        pytest.param("postgresql://u:p@h/db", "postgresql+psycopg://u:p@h/db", id="bare-postgresql-coerced"),
+        pytest.param("postgresql+psycopg://u:p@h/db", "postgresql+psycopg://u:p@h/db", id="already-psycopg-kept"),
+        pytest.param("postgresql+psycopg2://u:p@h/db", "postgresql+psycopg2://u:p@h/db", id="other-driver-kept"),
+        pytest.param("sqlite:///x.db", "sqlite:///x.db", id="non-postgres-kept"),
+    ],
+)
+def test_psycopg_dsn(uri: str, expected: str) -> None:
+    assert _psycopg_dsn(uri) == expected

@@ -26,7 +26,7 @@ from strawberry.extensions import AddValidationRules
 import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  Registers the topology workflow instances
 from auth import GroupGate, GroupGateGraphql, UserinfoOIDCAuth
-from settings import settings
+from settings import settings, use_psycopg_driver
 
 # Fail fast rather than boot silently open. orchestrator-core's GraphQL layer skips the
 # authorization check entirely when OAUTH2_AUTHORIZATION_ACTIVE is off, so wherever authentication
@@ -48,6 +48,7 @@ app_settings.SERVE_GRAPHQL_UI = None
 # deployment does not expose its REST API schema.
 # FastAPI accepts None for these to disable the endpoints, though orchestrator-core types them str.
 docs: dict[str, Any] = {} if settings.serve_api_docs else {"docs_url": None, "openapi_url": None, "redoc_url": None}
+use_psycopg_driver()
 app = OrchestratorCore(base_settings=app_settings, **docs)
 
 # Authenticate bearer tokens via the OIDC provider's userinfo endpoint (orchestrator-core ships
