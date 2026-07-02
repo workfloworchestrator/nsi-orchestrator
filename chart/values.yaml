@@ -123,6 +123,33 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   # targetMemoryUtilizationPercentage: 80
 
+# Schedules (create/update/delete from the UI) and the scheduler's periodic tasks require a Redis
+# queue (CACHE_URI) and a scheduler process. When redis.enabled, the chart runs a bundled Redis and
+# injects CACHE_URI into the app + scheduler automatically. In production, point CACHE_URI at a
+# managed Redis via env and leave this disabled.
+redis:
+  enabled: false
+  image: redis:7-alpine
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+# Singleton process (python main.py scheduler run) that drains the schedule queue and executes due
+# tasks; an init container seeds the standard schedules. Requires a reachable Redis (see above).
+scheduler:
+  enabled: false
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 10m
+      memory: 128Mi
+
 # Pulls DATABASE_URI (and any client secret) from a cloud key vault via the secrets-store CSI
 # driver, exposing them as the {{ .Release.Name }}-secret used by envFrom. The deployment
 # (ApplicationSet) sets the real provider/objects; disabled by default for local rendering.
