@@ -41,7 +41,7 @@ spec:
         - name: {{ .Chart.Name }}-load-schedule
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["sh", "-c", "until python -m main scheduler load_initial_schedule; do echo 'waiting for db/redis...'; sleep 3; done"]
+          command: ["sh", "-c", "until python -m main scheduler load-initial-schedule; do echo 'waiting for db/redis...'; sleep 3; done"]
           {{- include "nsi-orchestrator.schedulerEnv" . | nindent 10 }}
           {{- if .Values.secretProviderClass.enabled }}
           volumeMounts:
