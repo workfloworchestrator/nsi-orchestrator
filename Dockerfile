@@ -3,7 +3,7 @@
 # Build stage
 FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:099503f2fe3e97d8b3c0bf972203a18594abf0f546599a04f457c658ee5b3943 AS build
 WORKDIR /app
-COPY pyproject.toml LICENSE README.md main.py settings.py wsgi.py ./
+COPY pyproject.toml LICENSE README.md *.py ./
 COPY products ./products
 COPY workflows ./workflows
 COPY services ./services
