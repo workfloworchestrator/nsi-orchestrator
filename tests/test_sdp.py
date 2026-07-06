@@ -34,10 +34,10 @@ def test_dds_sdp_parses_camelcase_stp_pair() -> None:
 @pytest.mark.parametrize(
     ("descriptions", "expected_label"),
     [
-        pytest.param({}, "a <-> z", id="no-descriptions"),
+        pytest.param({}, "a <-> z", id="no-descriptions-falls-back-to-id"),
         pytest.param(
             {"urn:ogf:network:a": "STP A", "urn:ogf:network:z": "STP Z"},
-            "a (STP A) <-> z (STP Z)",
+            "STP A <-> STP Z",
             id="with-descriptions",
         ),
     ],

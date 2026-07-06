@@ -57,9 +57,7 @@ def sdp_selector(sdps: list[DdsServiceDemarcationPoint]) -> type[Choice]:
     descriptions = subscription_descriptions_for_values("ServiceTerminationPoint", "stp_id")
 
     def side(stp_id: str) -> str:
-        short = stp_id.removeprefix("urn:ogf:network:")
-        description = descriptions.get(stp_id)
-        return f"{short} ({description})" if description else short
+        return descriptions.get(stp_id) or stp_id.removeprefix("urn:ogf:network:")
 
     options = {f"{sdp.stp_a_id}|{sdp.stp_z_id}": f"{side(sdp.stp_a_id)} <-> {side(sdp.stp_z_id)}" for sdp in sdps}
     choices = Choice("ServiceDemarcationPoint", zip(options.keys(), options.items()))  # type: ignore[arg-type]
