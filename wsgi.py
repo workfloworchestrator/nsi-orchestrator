@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from strawberry.extensions import AddValidationRules
 import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  Registers the topology workflow instances
 from auth import GroupGate, GroupGateGraphql, UserinfoOIDCAuth
+from log_filters import HealthCheckAccessFilter
 from settings import settings, use_psycopg_driver
 
 # Fail fast rather than boot silently open. orchestrator-core's GraphQL layer skips the
@@ -50,6 +52,10 @@ app_settings.SERVE_GRAPHQL_UI = None
 docs: dict[str, Any] = {} if settings.serve_api_docs else {"docs_url": None, "openapi_url": None, "redoc_url": None}
 use_psycopg_driver()
 app = OrchestratorCore(base_settings=app_settings, **docs)
+
+# OrchestratorCore ran initialise_logging above; add the filter afterwards so it survives. The health
+# probe fires every few seconds and would otherwise dominate the access log.
+logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
 
 # Authenticate bearer tokens via the OIDC provider's userinfo endpoint (orchestrator-core ships
 # only the abstract OIDCAuth), then restrict access to members of allowed_groups on REST + GraphQL.
