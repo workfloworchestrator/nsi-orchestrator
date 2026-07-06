@@ -21,6 +21,7 @@ yields no groups and is denied — and only bypasses for local development, wher
 ``OAUTH2_ACTIVE`` is off and there is no authenticated user to check.
 """
 
+import re
 from collections.abc import Iterable
 from http import HTTPStatus
 
@@ -28,8 +29,11 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 from oauth2_lib.fastapi import Authorization, GraphqlAuthorization, OIDCAuth, OIDCUserModel, RequestPath
 from oauth2_lib.settings import oauth2lib_settings
-from starlette.requests import HTTPConnection
+from starlette.requests import HTTPConnection, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
+
+# The awaiting-process callback route, authenticated by its own path token rather than OIDC.
+_CALLBACK_PATH = re.compile(r"/processes/[^/]+/callback/[^/]+")
 
 
 def _token_groups(user: OIDCUserModel | None, claim: str) -> set[str]:
@@ -65,6 +69,10 @@ class GroupGate(Authorization):
         # development works; once auth is on, enforce and fail closed.
         if not oauth2lib_settings.OAUTH2_ACTIVE:
             return None
+        # The aggregator callback authenticates by its path token, not a group (see
+        # UserinfoOIDCAuth.is_bypassable_request), so skip the group gate for it too.
+        if _CALLBACK_PATH.search(request.url.path):
+            return None
         return _is_member(user, self.allowed_groups, self.groups_claim)
 
 
@@ -89,6 +97,16 @@ class UserinfoOIDCAuth(OIDCAuth):
     by calling the provider's discovered ``userinfo_endpoint`` with it — which works with opaque
     access tokens and needs no resource-server credentials — and returns the claims as the user.
     """
+
+    @staticmethod
+    async def is_bypassable_request(request: Request) -> bool:
+        """Skip OIDC on the aggregator callback route.
+
+        The awaiting-process callback (``/api/processes/{id}/callback/{token}``) is
+        machine-to-machine: the aggregator-proxy carries no OIDC bearer, and orchestrator-core
+        authenticates it by the unguessable per-process token in the path instead.
+        """
+        return bool(_CALLBACK_PATH.search(request.url.path))
 
     async def userinfo(self, async_request: AsyncClient, token: str) -> OIDCUserModel:
         # authenticate() calls check_openid_config() first, so openid_config is populated here.

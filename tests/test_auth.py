@@ -26,18 +26,19 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 from oauth2_lib.fastapi import OIDCConfig, OIDCUserModel
 from oauth2_lib.settings import oauth2lib_settings
-from starlette.requests import HTTPConnection
+from starlette.requests import HTTPConnection, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from auth import GroupGate, GroupGateGraphql, UserinfoOIDCAuth
 
 OPERATOR = "urn:example:group:operators"
 OTHER = "urn:example:group:other"
+CALLBACK_PATH = "/api/processes/1d1b00ca-9c22-456a-abf2-60024def0764/callback/nMo_Hjo1"
 CLAIM = "eduperson_entitlement"
 
 
-def _conn() -> HTTPConnection:
-    return HTTPConnection({"type": "http", "headers": []})
+def _conn(path: str = "/api/subscriptions") -> HTTPConnection:
+    return HTTPConnection({"type": "http", "headers": [], "path": path})
 
 
 @pytest.mark.parametrize(
@@ -59,6 +60,31 @@ def test_group_gate_rest(
     monkeypatch.setattr(oauth2lib_settings, "OAUTH2_ACTIVE", oauth2_active)
     gate = GroupGate([OPERATOR], CLAIM)
     assert asyncio.run(gate.authorize(_conn(), user)) is expected
+
+
+@pytest.mark.parametrize(
+    "user",
+    [OIDCUserModel({CLAIM: [OTHER]}), cast(OIDCUserModel, None)],
+    ids=["non-operator", "no-user"],
+)
+def test_group_gate_bypasses_callback_route(monkeypatch: MonkeyPatch, user: OIDCUserModel) -> None:
+    monkeypatch.setattr(oauth2lib_settings, "OAUTH2_ACTIVE", True)
+    gate = GroupGate([OPERATOR], CLAIM)
+    assert asyncio.run(gate.authorize(_conn(CALLBACK_PATH), user)) is None
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        pytest.param(CALLBACK_PATH, True, id="callback-bypassed"),
+        pytest.param(CALLBACK_PATH + "/progress", True, id="callback-progress-bypassed"),
+        pytest.param("/api/processes/1d1b00ca/resume", False, id="resume-not-bypassed"),
+        pytest.param("/api/subscriptions", False, id="other-not-bypassed"),
+    ],
+)
+def test_is_bypassable_request(path: str, expected: bool) -> None:
+    request = Request({"type": "http", "headers": [], "path": path})
+    assert asyncio.run(_userinfo_auth().is_bypassable_request(request)) is expected
 
 
 @pytest.mark.parametrize(
