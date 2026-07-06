@@ -31,10 +31,24 @@ def test_dds_sdp_parses_camelcase_stp_pair() -> None:
     assert (sdp.stp_a_id, sdp.stp_z_id) == ("urn:a", "urn:z")
 
 
-def test_sdp_selector_keys_by_pair_and_strips_urn_in_label() -> None:
+@pytest.mark.parametrize(
+    ("descriptions", "expected_label"),
+    [
+        pytest.param({}, "a <-> z", id="no-descriptions"),
+        pytest.param(
+            {"urn:ogf:network:a": "STP A", "urn:ogf:network:z": "STP Z"},
+            "a (STP A) <-> z (STP Z)",
+            id="with-descriptions",
+        ),
+    ],
+)
+def test_sdp_selector_keys_by_pair_and_labels_with_optional_description(
+    monkeypatch: pytest.MonkeyPatch, descriptions: dict[str, str], expected_label: str
+) -> None:
+    monkeypatch.setattr(forms, "subscription_descriptions_for_values", lambda _product, _resource: descriptions)
     enum = forms.sdp_selector([DdsServiceDemarcationPoint(stp_a_id="urn:ogf:network:a", stp_z_id="urn:ogf:network:z")])
 
-    assert {member.value: member.label for member in enum} == {"urn:ogf:network:a|urn:ogf:network:z": "a <-> z"}
+    assert {member.value: member.label for member in enum} == {"urn:ogf:network:a|urn:ogf:network:z": expected_label}
 
 
 def test_available_service_demarcation_points_excludes_subscribed_pairs_and_requires_both_stps(

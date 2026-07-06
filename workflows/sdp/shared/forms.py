@@ -24,7 +24,12 @@ from products.product_blocks.stp import ServiceTerminationPointBlock
 from products.product_types.sdp import ServiceDemarcationPoint
 from products.product_types.stp import ServiceTerminationPoint
 from services.dds_proxy import DdsServiceDemarcationPoint, fetch_service_demarcation_points
-from workflows.shared import subscribed_values, subscription_id_for_value, subscription_ids_for_product_type
+from workflows.shared import (
+    subscribed_values,
+    subscription_descriptions_for_values,
+    subscription_id_for_value,
+    subscription_ids_for_product_type,
+)
 
 
 def subscribed_sdp_pairs() -> set[frozenset[str]]:
@@ -49,12 +54,14 @@ def available_service_demarcation_points() -> list[DdsServiceDemarcationPoint]:
 
 def sdp_selector(sdps: list[DdsServiceDemarcationPoint]) -> type[Choice]:
     """Build a dropdown of ``sdps``, keyed by the ``stp_a_id|stp_z_id`` pair and labelled with both ids."""
-    options = {
-        f"{sdp.stp_a_id}|{sdp.stp_z_id}": (
-            f"{sdp.stp_a_id.removeprefix('urn:ogf:network:')} <-> {sdp.stp_z_id.removeprefix('urn:ogf:network:')}"
-        )
-        for sdp in sdps
-    }
+    descriptions = subscription_descriptions_for_values("ServiceTerminationPoint", "stp_id")
+
+    def side(stp_id: str) -> str:
+        short = stp_id.removeprefix("urn:ogf:network:")
+        description = descriptions.get(stp_id)
+        return f"{short} ({description})" if description else short
+
+    options = {f"{sdp.stp_a_id}|{sdp.stp_z_id}": f"{side(sdp.stp_a_id)} <-> {side(sdp.stp_z_id)}" for sdp in sdps}
     choices = Choice("ServiceDemarcationPoint", zip(options.keys(), options.items()))  # type: ignore[arg-type]
     return cast("type[Choice]", choices)
 

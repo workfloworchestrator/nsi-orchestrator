@@ -108,6 +108,14 @@ def subscription_id_for_value(product_type: str, resource_type: str, value: str)
     return result
 
 
+def subscription_descriptions_for_values(product_type: str, resource_type: str) -> dict[str, str]:
+    """Map each ``resource_type`` value to its subscription description (non-terminated ``product_type``)."""
+    query = _value_select(SubscriptionInstanceValueTable.value, product_type, resource_type).add_columns(
+        SubscriptionTable.description
+    )
+    return {value: description for value, description in db.session.execute(query).all()}
+
+
 def subscription_ids_for_product_type(product_type: str) -> list[UUID]:
     """Return the subscription ids of all non-terminated subscriptions of ``product_type``."""
     query = (
