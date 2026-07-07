@@ -63,14 +63,20 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.secretProviderClass.enabled }}
           volumeMounts:
+          {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.secretProviderClass.enabled }}
             - name: secret-store
               mountPath: "/mnt/secret-store"
               readOnly: true
           {{- end }}
-      {{- if .Values.secretProviderClass.enabled }}
       volumes:
+      {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.secretProviderClass.enabled }}
         - name: secret-store
           csi:
             driver: secrets-store.csi.k8s.io
