@@ -30,8 +30,8 @@ from products.product_blocks.stp import ServiceTerminationPointBlock
 from products.product_types.sdp import ServiceDemarcationPoint
 from products.product_types.stp import ServiceTerminationPoint
 from services.aggregator_proxy import list_reservations
-from workflows.shared import subscription_ids_for_product_type
 from workflows.sdp.shared.forms import stp_block_for, subscribed_sdp_pairs
+from workflows.shared import subscription_ids_for_product_type
 
 # A VLAN id; the aggregator encodes it on the STP as "...?vlan=<n>".
 Vlan = Annotated[int, Ge(1), Le(4094)]

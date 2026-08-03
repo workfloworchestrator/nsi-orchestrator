@@ -12,7 +12,7 @@
 # limitations under the License.
 
 from collections.abc import Callable, Generator
-from typing import Any, NoReturn, TypeAlias, TypeVar, cast
+from typing import Any, NoReturn, TypeAlias, cast
 from uuid import UUID
 
 from orchestrator.core.db import (
@@ -36,12 +36,11 @@ from sqlalchemy import Select, select
 from services.aggregator_proxy import AggregatorProxyError
 from services.dds_proxy import DdsProxyError
 
-T = TypeVar("T")
-
 
 def summary_form(product_name: str, summary_data: dict) -> Generator:
     summary = migration_summary(summary_data)  # type: ignore[arg-type]
-    ProductSummary: TypeAlias = cast("type[MigrationSummary]", summary)
+    # The `type` keyword cannot alias a cast() call, so the annotated form stays.
+    ProductSummary: TypeAlias = cast("type[MigrationSummary]", summary)  # noqa: UP040
 
     class SummaryForm(FormPage):
         model_config = ConfigDict(title=f"{product_name} summary")
@@ -142,7 +141,7 @@ def raise_form_validation_error(message: str) -> NoReturn:
     raise RuntimeError(message)  # unreachable: _FormError always raises during validation
 
 
-def fetch_for_form(fetch: Callable[[], T]) -> T:
+def fetch_for_form[T](fetch: Callable[[], T]) -> T:
     """Run a proxy ``fetch`` while building an input form.
 
     Converts a ``DdsProxyError`` / ``AggregatorProxyError`` (e.g. the proxy is unavailable) into a

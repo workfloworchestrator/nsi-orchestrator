@@ -23,8 +23,8 @@ from pydantic_forms.types import FormGenerator, State, UUIDstr
 
 from products.product_types.sdp import ServiceDemarcationPointInactive, ServiceDemarcationPointProvisioning
 from products.services.description import description
-from workflows.shared import create_summary_form, fetch_for_form
 from workflows.sdp.shared.forms import available_service_demarcation_points, sdp_selector, stp_block_for
+from workflows.shared import create_summary_form, fetch_for_form
 
 logger = structlog.get_logger(__name__)
 

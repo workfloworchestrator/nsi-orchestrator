@@ -20,7 +20,7 @@ from orchestrator.core.types import SubscriptionLifecycle
 from orchestrator.core.workflow import StepList, begin, callback_step, step
 from orchestrator.core.workflows.steps import store_process_subscription
 from orchestrator.core.workflows.utils import create_workflow
-from pydantic import ConfigDict, ValidationInfo, field_validator, model_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 from pydantic_forms.types import FormGenerator, State, UUIDstr
 from pydantic_forms.validators import Divider, choice_list
 
@@ -73,8 +73,12 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
 
         path_constraints: Divider
 
-        include_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = []  # type: ignore[valid-type]
-        exclude_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = []  # type: ignore[valid-type]
+        include_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = Field(  # type: ignore[valid-type]
+            default_factory=list
+        )
+        exclude_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = Field(  # type: ignore[valid-type]
+            default_factory=list
+        )
 
         @field_validator("source_vlan", "destination_vlan")
         @classmethod
