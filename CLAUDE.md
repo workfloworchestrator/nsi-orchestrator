@@ -6,7 +6,7 @@ this codebase.
 
 ## What this is
 
-An [orchestrator-core](https://github.com/workfloworchestrator/orchestrator-core) 5.0.x application
+An [orchestrator-core](https://github.com/workfloworchestrator/orchestrator-core) 5.1.x application
 (imports under `orchestrator.core.*`) that manages the lifecycle of five products — Topology,
 SwitchingService, STP, SDP, and MultiDomainPoint2Point (MDP2P) — over the
 [nsi-dds-proxy](https://github.com/workfloworchestrator/nsi-dds-proxy) (topology source) and the

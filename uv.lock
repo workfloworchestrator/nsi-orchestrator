@@ -1318,7 +1318,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
-    { name = "orchestrator-core", git = "https://github.com/workfloworchestrator/orchestrator-core.git?rev=e6c20302873edaf8a444a308ab84e90d6ad3b018" },
+    { name = "orchestrator-core", specifier = "==5.1.3" },
     { name = "pydantic-settings", specifier = "==2.14.2" },
     { name = "python-statemachine", specifier = "==3.2.0" },
 ]
@@ -1439,8 +1439,8 @@ wheels = [
 
 [[package]]
 name = "orchestrator-core"
-version = "5.1.0"
-source = { git = "https://github.com/workfloworchestrator/orchestrator-core.git?rev=e6c20302873edaf8a444a308ab84e90d6ad3b018#e6c20302873edaf8a444a308ab84e90d6ad3b018" }
+version = "5.1.3"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
     { name = "anyio" },
@@ -1477,6 +1477,10 @@ dependencies = [
     { name = "tabulate" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/8b/24d7db61cd00eb81eb08b12cab2598059cb97915027b7624e9d433e03d4b/orchestrator_core-5.1.3.tar.gz", hash = "sha256:30f5da23ad8696e848a1a831accb9e05416a43f0eab30551c767d613780b9252", size = 381212, upload-time = "2026-07-16T09:53:54.892Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/83/8810445efb88404a263a93e64b38672acc6c2cd9ae1e3e26b835cb952eb8/orchestrator_core-5.1.3-py3-none-any.whl", hash = "sha256:53502680d2959495d5de21525b69dcd859823cfe1b938dd7055c15e12a058ec3", size = 675990, upload-time = "2026-07-16T09:53:52.509Z" },
 ]
 
 [[package]]
@@ -2425,7 +2429,7 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.26.8"
+version = "0.27.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -2433,9 +2437,9 @@ dependencies = [
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7c/f7/68adc395201b20b872d68e975386832e8005ffeacedd43a1d837a32815be/typer-0.26.8.tar.gz", hash = "sha256:c244a6bd558886fe3f8780efb6bdd28bb9aff005a94eedebaa5cb32926fe2f7e", size = 202097, upload-time = "2026-06-26T09:22:45.705Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/78/fda3361b56efc27944f24225f6ecd13d96d6fcfe37bd0eb34e2f4c63f9fc/typer-0.27.0.tar.gz", hash = "sha256:629bd12ea5d13a17148125d9a264f949eb171fb3f120f9b04d85873cab054fa5", size = 203430, upload-time = "2026-07-15T19:21:07.007Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/87/b9fd69c92c6102a066e1b86a35243f53e70bd4c709f2a26d9f4fee4f4dc0/typer-0.26.8-py3-none-any.whl", hash = "sha256:3512ca79ac5c11113414b36e80281b872884477722440691c89d1112e321a49c", size = 122564, upload-time = "2026-06-26T09:22:44.72Z" },
+    { url = "https://files.pythonhosted.org/packages/40/03/26a383c9e58c213199d1aad1c3d353cfc22d4444ec6d2c0bf8ad02523843/typer-0.27.0-py3-none-any.whl", hash = "sha256:6f4b27631e47f077871b7dc30e933ec0131c1390fbe0e387ea5574b5bac9ccf1", size = 122716, upload-time = "2026-07-15T19:21:05.553Z" },
 ]
 
 [[package]]
@@ -2491,20 +2495,19 @@ wheels = [
 
 [[package]]
 name = "uvicorn"
-version = "0.49.0"
+version = "0.51.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "h11" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/1f/fa18009dea8469069cca78a4e877a008ab78f08b064bfc9ab891579077ff/uvicorn-0.49.0.tar.gz", hash = "sha256:ebf4271aa580d9de97f93192d4595176df6e91f9aae919ca73e4fc07df1e66a3", size = 91284, upload-time = "2026-06-03T22:01:30.448Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/65/b7c6c443ccc58678c91e1e973bbe2a878591538655d6e1d47f24ba1c51f3/uvicorn-0.51.0.tar.gz", hash = "sha256:f6f4b69b657c312f516dd2d268ab9ae6f254b11e4bac504f37b2ab58b24dd0b0", size = 94412, upload-time = "2026-07-08T10:59:05.962Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/fa/e1388bbcf24ef3274f45c0c1c7b501fd14971037c1b6ee23610553307497/uvicorn-0.49.0-py3-none-any.whl", hash = "sha256:ba3d14c3ee7e41c6c654c46c9eb489d33213cdd30aa1696eab1374337c13f68f", size = 71376, upload-time = "2026-06-03T22:01:29.037Z" },
+    { url = "https://files.pythonhosted.org/packages/45/ec/dbb7e5a6b91f86bfb9eb7d2988a2730907b6a729875b949c7f022e8b88fa/uvicorn-0.51.0-py3-none-any.whl", hash = "sha256:5d38af6cd620f2ae3849fb44fd4879e0890aa1febe8d47eb355fb45d93fe6a5b", size = 73219, upload-time = "2026-07-08T10:59:04.44Z" },
 ]
 
 [package.optional-dependencies]
 standard = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "httptools" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
