@@ -34,6 +34,8 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from orchestrator.core.db import db
+from orchestrator.core.db.database import ENGINE_ARGUMENTS, SESSION_ARGUMENTS, BaseModel, Database, SearchQuery
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm.scoping import scoped_session
@@ -41,8 +43,6 @@ from sqlalchemy.orm.session import close_all_sessions, sessionmaker
 
 import products  # noqa: F401  registers SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  registers the LazyWorkflowInstance entries
-from orchestrator.core.db import db
-from orchestrator.core.db.database import ENGINE_ARGUMENTS, SESSION_ARGUMENTS, BaseModel, Database, SearchQuery
 from services import dds_proxy
 
 _REPO = Path(__file__).resolve().parents[2]
