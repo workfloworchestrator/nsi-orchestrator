@@ -129,6 +129,25 @@ def test_mdp2p_action_form_gate_rejects_wrong_state(
         _build_form(module)
 
 
+@pytest.mark.parametrize("field", ["include_sdps", "exclude_sdps"])
+def test_create_form_sdp_constraints_carry_an_empty_array_default(field: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    create = importlib.import_module("workflows.mdp2p.create_mdp2p")
+    monkeypatch.setattr(create, "stps_used_in_sdp", set)
+    monkeypatch.setattr(create, "vlans_in_use_by_stp", dict)
+    monkeypatch.setattr(
+        create,
+        "subscribed_stps",
+        lambda: [SimpleNamespace(stp_id="urn:ogf:network:x", stp_name="Port X", label_group="1000-1999")],
+    )
+    monkeypatch.setattr(create, "subscribed_sdp_options", lambda: {"33333333-3333-3333-3333-333333333333": "SDP 1"})
+
+    form = next(create.initial_input_form_generator("MDP2P"))
+
+    # A default_factory would leave "default" out of the schema, and the UI then submits the untouched
+    # field as undefined instead of an empty array, failing client-side validation.
+    assert form.model_json_schema()["properties"][field]["default"] == []
+
+
 def test_vlans_in_use_by_stp_holds_failed_but_releases_terminated() -> None:
     def reservation(status: str, source_vlan: int, dest_vlan: int) -> AggregatorReservation:
         return AggregatorReservation.model_validate(
