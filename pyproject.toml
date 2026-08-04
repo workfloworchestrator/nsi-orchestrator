@@ -26,6 +26,9 @@ include = ["products*", "workflows*", "services*"]
 
 [tool.uv]
 package = true
+# litellm 1.92+ ships only manylinux and win_amd64 wheels; on musl and macOS it falls back to an
+# sdist that needs a Rust toolchain.
+constraint-dependencies = ["litellm<1.92"]
 
 [dependency-groups]
 dev = [
