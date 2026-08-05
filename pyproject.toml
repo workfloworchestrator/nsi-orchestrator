@@ -45,6 +45,11 @@ target-version = "py313"
 line-length = 120
 extend-exclude = ["migrations"]
 
+[tool.ruff.lint]
+# Pydantic form/domain models declare fields as class attributes; a literal [] default is a field
+# default, not shared mutable class state.
+ignore = ["RUF012"]
+
 [tool.mypy]
 ignore_missing_imports = true
 disallow_untyped_calls = false
