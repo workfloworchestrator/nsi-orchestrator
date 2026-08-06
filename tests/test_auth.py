@@ -29,7 +29,7 @@ from oauth2_lib.settings import oauth2lib_settings
 from starlette.requests import HTTPConnection, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from auth import GroupGate, GroupGateGraphql, UserinfoOIDCAuth
+from auth import GroupGate, GroupGateGraphql, NamedEmailUserModel, UserinfoOIDCAuth
 
 OPERATOR = "urn:example:group:operators"
 OTHER = "urn:example:group:other"
@@ -155,3 +155,17 @@ def test_userinfo_raises_503_without_openid_config() -> None:
     with pytest.raises(HTTPException) as exc:
         asyncio.run(auth.userinfo(client, "token"))
     assert exc.value.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    ("claims", "expected"),
+    [
+        pytest.param({"name": "Ada Lovelace", "email": "ada@op"}, "Ada Lovelace <ada@op>", id="name-and-email"),
+        pytest.param({"name": "Ada Lovelace"}, "Ada Lovelace", id="name-only"),
+        pytest.param({"email": "ada@op"}, "ada@op", id="email-only"),
+        pytest.param({"sub": "u"}, "u", id="sub-fallback"),
+        pytest.param({}, "", id="nothing"),
+    ],
+)
+def test_named_email_user_model_name(claims: dict[str, str], expected: str) -> None:
+    assert NamedEmailUserModel(claims).name == expected

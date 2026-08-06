@@ -57,6 +57,23 @@ def _is_member(user: OIDCUserModel | None, allowed: set[str], claim: str) -> boo
     return bool(allowed & _token_groups(user, claim))
 
 
+class NamedEmailUserModel(OIDCUserModel):
+    """Identify the user as ``Full Name <email>``.
+
+    orchestrator-core stores a process's ``created_by`` from ``resolve_user_name()``, which takes
+    ``OIDCUserModel.name`` — the full name only. A property shadows the base class' claim lookup via
+    ``__getattr__``, so appending the email here is enough to widen the field, with the plain name
+    (or the email, or ``sub``) as fallback when the token lacks a claim.
+    """
+
+    @property
+    def name(self) -> str:
+        full_name, email = str(self.get("name", "")), str(self.get("email", ""))
+        if full_name and email:
+            return f"{full_name} <{email}>"
+        return full_name or email or str(self.get("sub", ""))
+
+
 class GroupGate(Authorization):
     """REST authorization: allow a request when the token shares a group with ``allowed_groups``."""
 

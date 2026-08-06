@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from graphql.validation import NoSchemaIntrospectionCustomRule
-from oauth2_lib.fastapi import OIDCUserModel
 from oauth2_lib.settings import oauth2lib_settings
 from orchestrator.core import OrchestratorCore
 from orchestrator.core.graphql import Mutation, Query
@@ -26,7 +25,7 @@ from strawberry.extensions import AddValidationRules
 
 import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  Registers the topology workflow instances
-from auth import GroupGate, GroupGateGraphql, UserinfoOIDCAuth
+from auth import GroupGate, GroupGateGraphql, NamedEmailUserModel, UserinfoOIDCAuth
 from log_filters import HealthCheckAccessFilter
 from settings import settings, use_psycopg_driver
 
@@ -65,7 +64,7 @@ app.register_authentication(
         openid_config_url=oauth2lib_settings.OIDC_CONF_URL,
         resource_server_id=oauth2lib_settings.OAUTH2_RESOURCE_SERVER_ID,
         resource_server_secret=oauth2lib_settings.OAUTH2_RESOURCE_SERVER_SECRET,
-        oidc_user_model_cls=OIDCUserModel,
+        oidc_user_model_cls=NamedEmailUserModel,
     )
 )
 app.register_authorization(GroupGate(settings.allowed_groups, settings.groups_claim))

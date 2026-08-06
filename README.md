@@ -287,6 +287,11 @@ REST and GraphQL on membership of `ALLOWED_GROUPS` (an OIDC groups claim); with 
 default `OAUTH2_ACTIVE=true` it refuses to start unless a group is configured, so local runs set
 `OAUTH2_ACTIVE=false`.
 
+A process records its initiator as `Full Name <email>` in the **Created By** field, from the `name`
+and `email` claims returned by the provider's userinfo endpoint. The email is only present when the
+token was minted with the `email` scope — that is set in the OIDC client registration at the
+provider, not in this repo; without it the field falls back to the name alone.
+
 ### Adding or changing a product
 
 Products are scaffolded from the [`templates/`](templates) YAML with the orchestrator-core generator,
