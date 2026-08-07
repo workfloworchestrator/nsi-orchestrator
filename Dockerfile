@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 #
 # Build stage
-FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:099503f2fe3e97d8b3c0bf972203a18594abf0f546599a04f457c658ee5b3943 AS build
+FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:e9a8312ed6a98f515208dd792c61178a0b7c8fbfb807af01534f0e6fe10b24f5 AS build
 WORKDIR /app
 COPY pyproject.toml uv.lock LICENSE README.md *.py ./
 COPY products ./products
@@ -11,7 +11,7 @@ RUN uv build --no-cache --wheel --out-dir dist \
     && uv export --frozen --no-dev --no-emit-project --no-hashes -o dist/requirements.txt
 
 # Final stage
-FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:099503f2fe3e97d8b3c0bf972203a18594abf0f546599a04f457c658ee5b3943
+FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:e9a8312ed6a98f515208dd792c61178a0b7c8fbfb807af01534f0e6fe10b24f5
 COPY --from=build /app/dist/*.whl /app/dist/requirements.txt /tmp/
 # Dependencies come from the exported lock; a fresh resolve picks up releases without a musl wheel.
 RUN uv pip install --system --no-cache -r /tmp/requirements.txt \
