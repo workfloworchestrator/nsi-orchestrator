@@ -14,15 +14,12 @@
 from uuid import uuid4
 
 import structlog
-from orchestrator.core.forms import FormPage
 from orchestrator.core.settings import app_settings
 from orchestrator.core.types import SubscriptionLifecycle
 from orchestrator.core.workflow import StepList, begin, callback_step, step
 from orchestrator.core.workflows.steps import store_process_subscription
 from orchestrator.core.workflows.utils import create_workflow
-from pydantic import ConfigDict, ValidationInfo, field_validator, model_validator
 from pydantic_forms.types import FormGenerator, State, UUIDstr
-from pydantic_forms.validators import Divider, choice_list
 
 from products.product_blocks.sap import ServiceAccessPointBlockInactive
 from products.product_blocks.sdp_constraint import ConstraintType, SdpConstraintBlockInactive
@@ -31,92 +28,34 @@ from products.services.description import description
 from services import aggregator_proxy
 from settings import settings
 from workflows.mdp2p.shared.forms import (
-    Vlan,
+    CONNECTION_SUMMARY_FIELDS,
+    connection_form,
+    path_summary,
     sdp_block_for,
-    sdp_selector,
+    sdp_topology,
     stp_block_for,
-    stp_selector,
-    stps_used_in_sdp,
-    subscribed_sdp_options,
-    subscribed_stps,
-    vlan_in_label_group,
-    vlans_in_use_by_stp,
 )
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
-from workflows.shared import create_summary_form, fetch_for_form
+from workflows.shared import create_summary_form
 
 logger = structlog.get_logger(__name__)
 
 
 def initial_input_form_generator(product_name: str) -> FormGenerator:
-    used_in_sdp = stps_used_in_sdp()
-    stps = subscribed_stps()
-    label_group_by_id = {stp.stp_id: stp.label_group for stp in stps}
-    in_use_by_stp = fetch_for_form(vlans_in_use_by_stp)
-    ServiceTerminationPointChoice = stp_selector(stps, used_in_sdp, in_use_by_stp)
-    ServiceDemarcationPointChoice = sdp_selector(subscribed_sdp_options())
+    topology = sdp_topology()
 
-    class CreateMultiDomainPoint2PointForm(FormPage):
-        model_config = ConfigDict(title=product_name)
-
-        circuit_description: str
-        service_speed: int
-
-        endpoints: Divider
-
-        source_stp: ServiceTerminationPointChoice  # type: ignore[valid-type]
-        source_vlan: Vlan
-        destination_stp: ServiceTerminationPointChoice  # type: ignore[valid-type]
-        destination_vlan: Vlan
-        # STPs that are part of an SDP are shown but only selectable when this is ticked.
-        allow_stps_in_sdp: bool = False
-
-        path_constraints: Divider
-
-        # Literal defaults, not default_factory: only those end up as "default": [] in the JSON schema,
-        # which the UI needs to initialise the field as an empty array instead of undefined.
-        include_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = []  # type: ignore[valid-type]
-        exclude_sdps: choice_list(ServiceDemarcationPointChoice, unique_items=True) = []  # type: ignore[valid-type]
-
-        @field_validator("source_vlan", "destination_vlan")
-        @classmethod
-        def _vlan_within_stp_range(cls, vlan: int, info: ValidationInfo) -> int:
-            # source_vlan -> source_stp, destination_vlan -> destination_stp (defined before it).
-            assert info.field_name is not None
-            stp_id = info.data.get(info.field_name.replace("_vlan", "_stp"))
-            if stp_id is not None:
-                stp_id = str(stp_id)
-                label_group = label_group_by_id[stp_id]
-                if not vlan_in_label_group(vlan, label_group):
-                    raise ValueError(f"must be within the STP's VLAN range ({label_group})")
-                if vlan in in_use_by_stp.get(stp_id, set()):
-                    raise ValueError("is already in use on the selected STP")
-            return vlan
-
-        @model_validator(mode="after")
-        def _check_endpoints(self) -> "CreateMultiDomainPoint2PointForm":
-            if str(self.source_stp) == str(self.destination_stp):
-                raise ValueError("Source and destination STP must be different")
-            if not self.allow_stps_in_sdp and {str(self.source_stp), str(self.destination_stp)} & used_in_sdp:
-                raise ValueError("A selected STP is part of an SDP; tick 'allow stps in sdp' to use it anyway")
-            if set(self.include_sdps) & set(self.exclude_sdps):
-                raise ValueError("An SDP cannot be both included and excluded")
-            return self
-
-    user_input = yield CreateMultiDomainPoint2PointForm
+    user_input = yield connection_form(product_name, topology)
     user_input_dict: State = user_input.model_dump()
 
-    summary_fields = [
-        "circuit_description",
-        "service_speed",
-        "source_stp",
-        "source_vlan",
-        "destination_stp",
-        "destination_vlan",
-    ]
-    yield from create_summary_form(user_input_dict, product_name, summary_fields)
+    summary_input = user_input_dict | {"path": path_summary(topology, user_input_dict["include_sdps"])}
+    yield from create_summary_form(summary_input, product_name, CONNECTION_SUMMARY_FIELDS)
 
-    return {"customer_id": app_settings.DEFAULT_CUSTOMER_IDENTIFIER} | user_input_dict
+    # Derived here, not in reserve_connection: the topology is already loaded and the form has just
+    # validated this exact order, so recomputing at step time would re-query and could disagree.
+    ero = topology.ero(
+        str(user_input_dict["source_stp"]), str(user_input_dict["destination_stp"]), user_input_dict["include_sdps"]
+    )
+    return {"customer_id": app_settings.DEFAULT_CUSTOMER_IDENTIFIER, "ero": ero} | user_input_dict
 
 
 @step("Construct Subscription model")
@@ -176,7 +115,7 @@ def construct_mdp2p_model(
 
 
 @step("Reserve connection with the aggregator")
-def reserve_connection(subscription: MultiDomainPoint2PointProvisioning, callback_route: str) -> State:
+def reserve_connection(subscription: MultiDomainPoint2PointProvisioning, callback_route: str, ero: list[str]) -> State:
     vc = subscription.vc
     source, destination = vc.saps
     connection_id = aggregator_proxy.reserve(
@@ -186,6 +125,7 @@ def reserve_connection(subscription: MultiDomainPoint2PointProvisioning, callbac
         source_stp=f"{source.stp.stp_id}?vlan={source.vlan}",
         dest_stp=f"{destination.stp.stp_id}?vlan={destination.vlan}",
         callback_url=f"{settings.orchestrator_callback_base_url}{callback_route}",
+        ero=ero,
     )
     vc.connection_id = connection_id
     return {"subscription": subscription}

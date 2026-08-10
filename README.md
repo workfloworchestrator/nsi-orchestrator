@@ -189,13 +189,15 @@ workflows manage its lifecycle:
 The multi domain point-to-point (MDP2P) product represents a connection reserved through the
 [NSI Aggregator Proxy](https://github.com/workfloworchestrator/nsi-aggregator-proxy). A subscription
 holds a `VirtualCircuit` block with two `ServiceAccessPoint`s (each a subscribed STP plus a VLAN
-carried as the SAP `vlan`), an optional list of `SdpConstraint`s (SDPs to include or exclude from
-the path), the requested `service_speed`, the orchestrator-generated `global_reservation_id`, the
-aggregator-assigned `connection_id`, and the reservation `state`.
+carried as the SAP `vlan`), an ordered list of `SdpConstraint`s (the SDPs the path must traverse,
+sent to the aggregator as an Explicit Route Object — see [Path constraints](#path-constraints)), the
+requested `service_speed`, the orchestrator-generated `global_reservation_id`, the aggregator-assigned
+`connection_id`, and the reservation `state`.
 
 The reservation `state` is driven by a small [python-statemachine](https://pypi.org/project/python-statemachine/)
-connection state machine (`CREATED → RESERVED → ACTIVATED`, with `terminate` to `TERMINATED` and any
-step able to end in `FAILED`). The aggregator owns the detailed NSI lifecycle and rejects illegal
+connection state machine (`CREATED → RESERVED → ACTIVATED`, with `terminate` to `TERMINATED`, any
+step able to end in `FAILED`, and `retry` back from `FAILED` to `CREATED` once the failed connection
+has been terminated at the aggregator). The aggregator owns the detailed NSI lifecycle and rejects illegal
 operations itself; this state machine is the orchestrator's local view, persisted on the block. The
 reserve, provision, release and terminate operations are asynchronous: each fires a request and the
 aggregator POSTs the result back to a `callback_step`. The wait has a backstop timeout
@@ -204,11 +206,15 @@ retried or aborted. A retried step re-fires the request, which the Aggregator Pr
 idempotently.
 
 - **Create** — form for a description, source/destination STP and VLAN, the service speed, and SDPs
-  to include/exclude. Each STP option is labelled with its still-free VLANs (its DDS range minus the
-  VLANs the aggregator reports in use), and STPs already part of an SDP are gated behind a checkbox;
-  each VLAN is validated against its STP (within range and not already in use). Reserves the
-  connection via `POST /reservations` with a freshly generated global reservation id; the state ends
-  up `RESERVED` or `FAILED`.
+  to include in the path. Each STP option is labelled with its still-free VLANs (its DDS range minus
+  the VLANs the aggregator reports in use), and STPs already part of an SDP are gated behind a
+  checkbox; each VLAN is validated against its STP (within range and not already in use). Reserves
+  the connection via `POST /reservations` with a freshly generated global reservation id; the state
+  ends up `RESERVED` or `FAILED`.
+- **Retry reservation** — available while the connection holds nothing (`CREATED` or `FAILED`).
+  Prefills every create field from the subscription so nothing is retyped, terminates the failed
+  connection, and reserves again with a fresh global reservation id. Use it when a reserve failed for
+  a reason the user can fix: an unroutable path, unavailable capacity, or a VLAN taken en route.
 - **Provision** — `RESERVED → ACTIVATED` via `POST /reservations/{connectionId}/provision`.
 - **Release** — `ACTIVATED → RESERVED` via `POST /reservations/{connectionId}/release`.
 - **Modify** — edit the local virtual circuit `circuit_description` (not pushed to the aggregator).
@@ -219,8 +225,32 @@ idempotently.
   aggregator's stable state (e.g. a callback was missed after a network problem), update it;
   transient states (RESERVING/ACTIVATING/DEACTIVATING) are left for a later run.
 
-SDP include/exclude constraints are stored on the subscription but are not yet sent to the
-aggregator, which has no path-constraint field.
+### Path constraints
+
+SDPs picked in `include_sdps` are sent to the aggregator as an NSI Explicit Route Object (the p2ps
+`<ero>` element), which the Path Computation Engine uses to steer the path.
+
+**Selection order is path order**, from the source towards the destination. An ERO is explicit by
+definition, so the orchestrator does not reorder it — in a mesh "via X then Y" and "via Y then X" are
+different paths. An order that cannot be walked between the chosen endpoints is rejected by the
+create form, before the workflow starts.
+
+What the orchestrator does compute is *orientation*. An ERO names one STP per SDP, and it must be the
+end facing the source; the PCE derives the far end from the SDP itself. Naming the wrong end does not
+raise an error — the PCE routes around the SDP and returns a path that hairpins through the far
+domain — so `workflows/mdp2p/shared/ero.py` searches the SDP topology for a route that never
+re-enters a network and takes the source-facing end of each SDP from it.
+
+Two preconditions:
+
+- **The aggregator must run the `sequential` or `tree` PCE algorithm.** Under `chain` the pathfinder
+  chain is `reachabilityPCE` alone, which copies the ERO onto every child segment without ever
+  computing against it, so the constraint is silently inert. nsi-safnari ships `algorithm = chain` as
+  its default; re-check this before enabling path constraints against a new deployment.
+- **Excluding SDPs is not supported.** The field remains on the form but a non-empty `exclude_sdps`
+  is rejected. nsi-safnari drops the p2ps `<exclusion>` element before path computation and nsi-pce
+  never applies it, so honouring it would silently produce a path through the SDP the user asked to
+  avoid. Tracked upstream against nsi-pce and nsi-safnari.
 
 ## Configuration
 

@@ -32,6 +32,8 @@ from workflows.mdp2p.shared.fsm import ConnectionState, apply
         (ConnectionState.ACTIVATED, "release_failed", ConnectionState.FAILED),
         (ConnectionState.RESERVED, "terminate", ConnectionState.TERMINATED),
         (ConnectionState.FAILED, "terminate", ConnectionState.TERMINATED),
+        (ConnectionState.FAILED, "retry", ConnectionState.CREATED),
+        (ConnectionState.CREATED, "retry", ConnectionState.CREATED),
     ],
 )
 def test_legal_transitions(start: str, event: str, expected: str) -> None:
@@ -45,6 +47,8 @@ def test_legal_transitions(start: str, event: str, expected: str) -> None:
         (ConnectionState.RESERVED, "release_confirmed"),  # not activated
         (ConnectionState.ACTIVATED, "terminate"),  # must be released first
         (ConnectionState.TERMINATED, "reserve_confirmed"),  # terminal state
+        (ConnectionState.RESERVED, "retry"),  # holds a reservation; release or terminate it instead
+        (ConnectionState.ACTIVATED, "retry"),  # data plane may be up
     ],
 )
 def test_illegal_transitions_raise(start: str, event: str) -> None:

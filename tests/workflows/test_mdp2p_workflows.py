@@ -31,6 +31,7 @@ from tests.workflows import (
     resume_callback,
     run_workflow,
 )
+from tests.workflows.conftest import PATH_STPS
 
 _CREATE_FORM = {
     "circuit_description": "Test VC",
@@ -84,6 +85,107 @@ def test_create_mdp2p(stp_subscriptions: dict[str, str], sdp_subscription: str, 
     assert subscription.vc.state == "RESERVED"
     assert subscription.vc.connection_id == "conn-1"
     assert {sap.stp.stp_id for sap in subscription.vc.saps} == {"urn:stp1", "urn:stp2"}
+
+
+def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
+    path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user's SDP order must survive the DB round trip and reach the aggregator as an ERO."""
+    captured: dict = {}
+
+    def fake_reserve(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "conn-1"
+
+    monkeypatch.setattr(aggregator_proxy, "reserve", fake_reserve)
+
+    form = _CREATE_FORM | {
+        "source_stp": PATH_STPS["source"],
+        "source_vlan": 1001,
+        "destination_stp": PATH_STPS["destination"],
+        "destination_vlan": 1002,
+        "allow_stps_in_sdp": False,
+        "include_sdps": [path_subscriptions["A <-> B"], path_subscriptions["B <-> C"]],
+    }
+    result, process, step_log = run_workflow(
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {}]
+    )
+    assert_awaiting_callback(result)
+    result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-1"})
+    assert_complete(result)
+
+    subscription = MultiDomainPoint2Point.from_subscription(extract_state(result)["subscription_id"])
+    constraints = subscription.vc.sdp_constraints
+    assert [constraint.sdp.sdp_name for constraint in constraints] == ["A <-> B", "B <-> C"]
+    assert {constraint.constraint_type for constraint in constraints} == {"INCLUDE"}
+
+    # One STP per SDP, each the end facing the source, in the order the user chose.
+    assert captured["ero"] == [PATH_STPS["a_to_b"], PATH_STPS["b_to_c"]]
+
+
+@pytest.fixture
+def failed_mdp2p_subscription(stp_subscriptions: dict[str, str], sdp_subscription: str, aggregator: None) -> str:
+    """An MDP2P whose reserve failed: ACTIVE, in-sync, vc.state == FAILED."""
+    result, process, step_log = run_workflow(
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, _CREATE_FORM, {}]
+    )
+    assert_awaiting_callback(result)
+    result, _ = resume_callback(
+        process, step_log, {"status": "FAILED", "connectionId": "conn-1", "lastError": "no path found"}
+    )
+    assert_complete(result)
+    subscription_id = str(extract_state(result)["subscription_id"])
+    assert MultiDomainPoint2Point.from_subscription(subscription_id).vc.state == "FAILED"
+    return subscription_id
+
+
+def test_retry_reservation_terminates_the_old_connection_and_reserves_again(
+    failed_mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    def fake_reserve(**kwargs: object) -> str:
+        calls.append(("reserve", kwargs))
+        return "conn-2"
+
+    monkeypatch.setattr(aggregator_proxy, "terminate", lambda cid, _url: calls.append(("terminate", cid)))
+    monkeypatch.setattr(aggregator_proxy, "reserve", fake_reserve)
+    before = MultiDomainPoint2Point.from_subscription(failed_mdp2p_subscription).vc
+
+    form = _CREATE_FORM | {"service_speed": 2000}
+    result, process, step_log = run_workflow(
+        "retry_reservation", [{"subscription_id": failed_mdp2p_subscription}, form, {}]
+    )
+    assert_awaiting_callback(result)
+    result, step_log = resume_callback(process, step_log, {"status": "TERMINATED"})
+    assert_awaiting_callback(result)
+    result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-2"})
+    assert_complete(result)
+
+    assert [name for name, _ in calls] == ["terminate", "reserve"]
+    assert calls[0][1] == "conn-1"
+
+    after = MultiDomainPoint2Point.from_subscription(failed_mdp2p_subscription).vc
+    assert after.state == "RESERVED"
+    assert after.connection_id == "conn-2"
+    assert after.service_speed == 2000
+    # A fresh id, or the proxy would dedup on the old one and ignore every correction.
+    assert after.global_reservation_id != before.global_reservation_id
+
+
+@pytest.mark.parametrize("state", ["RESERVED", "ACTIVATED"])
+def test_retry_reservation_refuses_a_live_connection(mdp2p_subscription: str, state: str) -> None:
+    """Retrying tears the connection down, so it must be unreachable while one is actually held."""
+    from pydantic_forms.exceptions import FormValidationError
+
+    from workflows.mdp2p import retry_reservation
+
+    subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
+    subscription.vc.state = state
+    subscription.save()
+
+    with pytest.raises(FormValidationError, match="holds no reservation"):
+        next(retry_reservation.initial_input_form_generator(mdp2p_subscription))
 
 
 def test_provision_mdp2p(mdp2p_subscription: str) -> None:

@@ -21,6 +21,7 @@ proxy reports back in a callback and the transitions the workflows drive between
                             ^                         |
                             +--------release----------+
     RESERVED / FAILED --terminate--> TERMINATED   (any reserve/provision/release may end in FAILED)
+    FAILED --retry--> CREATED                     (once the failed connection has been terminated)
 """
 
 from statemachine import State, StateMachine
@@ -52,6 +53,10 @@ class ConnectionStateMachine(StateMachine):
     release_confirmed = activated.to(reserved)
     release_failed = activated.to(failed)
     terminate = reserved.to(terminated) | failed.to(terminated)
+    # Back to the start, once the failed connection has been terminated at the aggregator, so a
+    # corrected reservation can be attempted. Adds no new state, so nothing downstream sees a value
+    # it does not already know.
+    retry = failed.to(created) | created.to(created)
 
 
 def apply(current_state: str, event: str) -> str:

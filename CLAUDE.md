@@ -36,15 +36,22 @@ Both need the pgvector extension.
   product). `products/services/description.py` builds the human-readable subscription description via
   a `singledispatch` registered per product/block type.
 - `workflows/<product>/` — `create`/`modify`/`validate`/`terminate` (+ `reconcile` for STP; +
-  `provision`/`release`/`reconcile` for MDP2P), plus `workflows/<product>/shared/forms.py` for the
-  form selectors and block lookups. All instances are registered in `workflows/__init__.py`.
+  `provision`/`release`/`reconcile`/`retry_reservation` for MDP2P), plus
+  `workflows/<product>/shared/forms.py` for the form selectors and block lookups. All instances are
+  registered in `workflows/__init__.py`.
+- `workflows/mdp2p/shared/ero.py` — derives the NSI Explicit Route Object from the included SDPs.
+  Pure, no I/O; `network_of` mirrors nsi-pce's `SimpleStp.parseNetworkId` (first **six** colon
+  components, `?vlan=` stripped first).
 - `workflows/shared.py` — cross-product form helpers: `create_summary_form`/`modify_summary_form`,
   `subscription_id_for_value`, `raise_form_validation_error`, and `fetch_for_form` (wraps a proxy
   fetch so a proxy error surfaces as a `FormValidationError` instead of a crashed step).
 - `services/` — `dds_proxy.py` and `aggregator_proxy.py` (httpx clients returning pydantic models);
   `edge_auth.py` factors the shared mTLS / dev-header `client_kwargs` both use.
 - `workflows/mdp2p/shared/fsm.py` — the python-statemachine connection FSM
-  (`CREATED→RESERVED→ACTIVATED`, `terminate`→`TERMINATED`, any step→`FAILED`), persisted on `vc.state`.
+  (`CREATED→RESERVED→ACTIVATED`, `terminate`→`TERMINATED`, any step→`FAILED`, `retry`→`CREATED` from
+  `FAILED`), persisted on `vc.state`. Note this is the orchestrator's local view; the
+  aggregator-proxy has its own, larger state machine (`RESERVING`/`ACTIVATING`/`DEACTIVATING` too)
+  and knows nothing about `retry` — to it that is a terminate plus a new reserve.
 - `templates/` — generator input YAMLs (data model only), one per product.
 - `tests/` — unit tests (mocked proxies); `tests/workflows/` — DB-backed end-to-end tests.
 
@@ -59,7 +66,8 @@ Both need the pgvector extension.
   off). `OAUTH2_ACTIVE` defaults on, so local dev runs with `OAUTH2_ACTIVE=false`; the real group lives
   in deployment config, never in the source default.
 - **Async aggregator operations use `callback_step`.** reserve/provision/release/terminate fire a
-  request with a `callback_route`, the aggregator-proxy POSTs the result back, and the validate step
+  request with a `callback_route` (`retry_reservation` chains a terminate and a reserve, the first
+  behind a `conditional`), the aggregator-proxy POSTs the result back, and the validate step
   reads it from `callback_result`. `callback_step(...)` is a single `step_group` in `workflow.steps`
   (it is *not* expanded into sub-steps); the awaiting state carries
   `__sub_step == "<group> - Await callback"`. Each passes `timeout=settings.aggregator_callback_timeout`
@@ -87,8 +95,20 @@ Both need the pgvector extension.
   `aggregator_proxy.<fn>`), **but `workflows/mdp2p/shared/forms.py` does
   `from services.aggregator_proxy import list_reservations`** — an import-by-name binding that must be
   patched on the `forms` module, not on `aggregator_proxy`, or the create form hits the real aggregator.
-- **SDP include/exclude constraints** are stored on the subscription but not yet sent to the
-  aggregator (it has no path-constraint field).
+- **The ERO names one STP per SDP, the end facing the source**, in the user's selection order. The
+  PCE derives the far end itself. Naming the wrong end is *not* an error — it routes around the SDP
+  and hairpins through the far domain — which is why `ero.py` searches for a route that never
+  re-enters a network instead of picking by hop count. Selection order is path order and is never
+  reordered.
+- **The ERO only has any effect under the `sequential` or `tree` PCE algorithm.** `chainPCE` is
+  `reachabilityPCE` alone, which copies the ERO to every child segment without computing against it.
+  nsi-safnari defaults to `chain`; the ANA deployment runs `SEQUENTIAL`.
+- **Excluding SDPs is rejected, not ignored.** nsi-safnari's `pointToPointServiceFormat` drops the
+  p2ps `<exclusion>` element and nsi-pce never applies it, so accepting it would silently route
+  through the SDP the user asked to avoid. The field and `ConstraintType.EXCLUDE` remain in the model;
+  the gate is one line in `create_mdp2p._check_endpoints`.
+- **A retry mints a new `global_reservation_id`.** The aggregator-proxy dedups on it *before* reading
+  the criteria, so reusing it would hand back the old failed connection and ignore every correction.
 
 ## Conventions
 

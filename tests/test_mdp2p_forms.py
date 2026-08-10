@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import importlib
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 import pytest
+from orchestrator.core.forms import FormPage
 from pydantic_forms.exceptions import FormValidationError
 
 from services.aggregator_proxy import AggregatorReservation
@@ -129,23 +131,77 @@ def test_mdp2p_action_form_gate_rejects_wrong_state(
         _build_form(module)
 
 
+_A = "urn:ogf:network:a.example.net:2025:topology"
+_B = "urn:ogf:network:b.example.net:2025:topology"
+_C = "urn:ogf:network:c.example.net:2025:topology"
+_SDP_AB = "11111111-1111-1111-1111-111111111111"
+_SDP_BC = "22222222-2222-2222-2222-222222222222"
+
+# A three-domain chain A <-> B <-> C, with an SDP subscription for each hop.
+_PATH_TOPOLOGY = forms.SdpTopology(
+    names={_SDP_AB: "A <-> B", _SDP_BC: "B <-> C"},
+    stps={_SDP_AB: (f"{_A}:to-b", f"{_B}:to-a"), _SDP_BC: (f"{_B}:to-c", f"{_C}:to-b")},
+)
+_EDGE_STPS = [
+    SimpleNamespace(stp_id=f"{_A}:customer", stp_name="A edge", label_group="1000-1999"),
+    SimpleNamespace(stp_id=f"{_C}:customer", stp_name="C edge", label_group="1000-1999"),
+]
+
+
+def _create_form(monkeypatch: pytest.MonkeyPatch, topology: forms.SdpTopology, stps: list) -> type[FormPage]:
+    """The create form, with the topology and STP inventory it would otherwise load from the DB."""
+    create = importlib.import_module("workflows.mdp2p.create_mdp2p")
+    monkeypatch.setattr(forms, "vlans_in_use_by_stp", dict)
+    monkeypatch.setattr(forms, "subscribed_stps", lambda: stps)
+    monkeypatch.setattr(create, "sdp_topology", lambda: topology)
+    return cast("type[FormPage]", next(create.initial_input_form_generator("MDP2P")))
+
+
+def _form_values(**overrides: object) -> dict:
+    return {
+        "circuit_description": "demo",
+        "service_speed": 1000,
+        "source_stp": f"{_A}:customer",
+        "source_vlan": 1001,
+        "destination_stp": f"{_C}:customer",
+        "destination_vlan": 1002,
+        "include_sdps": [],
+        "exclude_sdps": [],
+    } | overrides
+
+
 @pytest.mark.parametrize("field", ["include_sdps", "exclude_sdps"])
 def test_create_form_sdp_constraints_carry_an_empty_array_default(field: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    create = importlib.import_module("workflows.mdp2p.create_mdp2p")
-    monkeypatch.setattr(create, "stps_used_in_sdp", set)
-    monkeypatch.setattr(create, "vlans_in_use_by_stp", dict)
-    monkeypatch.setattr(
-        create,
-        "subscribed_stps",
-        lambda: [SimpleNamespace(stp_id="urn:ogf:network:x", stp_name="Port X", label_group="1000-1999")],
-    )
-    monkeypatch.setattr(create, "subscribed_sdp_options", lambda: {"33333333-3333-3333-3333-333333333333": "SDP 1"})
-
-    form = next(create.initial_input_form_generator("MDP2P"))
+    form = _create_form(monkeypatch, _PATH_TOPOLOGY, _EDGE_STPS)
 
     # A default_factory would leave "default" out of the schema, and the UI then submits the untouched
     # field as undefined instead of an empty array, failing client-side validation.
     assert form.model_json_schema()["properties"][field]["default"] == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        pytest.param({"include_sdps": [_SDP_AB, _SDP_BC]}, None, id="sdps-in-path-order"),
+        pytest.param(
+            {"exclude_sdps": [_SDP_AB]},
+            "not yet supported by the aggregator",
+            id="exclusion-is-dropped-by-safnari-so-must-be-refused",
+        ),
+        pytest.param(
+            {"include_sdps": [_SDP_BC, _SDP_AB]},
+            "cannot be traversed in this order",
+            id="B-C-before-A-B-doubles-back",
+        ),
+    ],
+)
+def test_create_form_path_constraints(overrides: dict, message: str | None, monkeypatch: pytest.MonkeyPatch) -> None:
+    form = _create_form(monkeypatch, _PATH_TOPOLOGY, _EDGE_STPS)
+    if message is None:
+        assert form(**_form_values(**overrides)) is not None
+    else:
+        with pytest.raises(ValueError, match=message):
+            form(**_form_values(**overrides))
 
 
 def test_vlans_in_use_by_stp_holds_failed_but_releases_terminated() -> None:

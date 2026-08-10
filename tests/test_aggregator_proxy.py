@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 import httpx
@@ -86,6 +87,42 @@ def test_reserve_sends_request_and_returns_connection_id(monkeypatch: pytest.Mon
     assert captured["callbackURL"] == "http://orchestrator/api/processes/1/callback/tok"
     assert "requesterNSA" in captured
     assert "providerNSA" in captured
+
+
+@pytest.mark.parametrize(
+    ("ero", "expected"),
+    [
+        pytest.param(None, None, id="no-constraints-omits-the-key"),
+        pytest.param([], None, id="empty-omits-the-key"),
+        pytest.param(
+            ["urn:ogf:network:a.net:2025:t:hop-1", "urn:ogf:network:b.net:2025:t:hop-2"],
+            ["urn:ogf:network:a.net:2025:t:hop-1", "urn:ogf:network:b.net:2025:t:hop-2"],
+            id="ordered-members",
+        ),
+    ],
+)
+def test_reserve_sends_the_ero_only_when_there_is_one(
+    ero: list[str] | None, expected: list[str] | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(202, json={"instance": "/reservations/conn-42"})
+
+    _install_mock_transport(monkeypatch, handler)
+
+    reserve(
+        global_reservation_id="urn:uuid:abc",
+        description="demo",
+        capacity=1000,
+        source_stp="urn:ogf:network:a?vlan=100",
+        dest_stp="urn:ogf:network:b?vlan=200",
+        callback_url="http://orchestrator/api/processes/1/callback/tok",
+        ero=ero,
+    )
+
+    assert captured["criteria"]["p2ps"].get("ero") == expected
 
 
 def test_get_reservation_parses_stp_aliases(monkeypatch: pytest.MonkeyPatch) -> None:

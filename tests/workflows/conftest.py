@@ -71,6 +71,36 @@ DDS_DATA: dict[str, list[dict[str, object]]] = {
     "/service-demarcation-points": [{"stpAId": "urn:stp1", "stpZId": "urn:stp2"}],
 }
 
+# A three-domain chain A <-> B <-> C with a customer edge at each end, for tests that need real
+# NSI URNs (the ids above are deliberately short and have no network part to derive an ERO from).
+_A, _B, _C = (f"urn:ogf:network:{name}.example.net:2025:topology" for name in ("a", "b", "c"))
+PATH_STPS = {
+    "source": f"{_A}:edge",
+    "a_to_b": f"{_A}:to-b",
+    "b_to_a": f"{_B}:to-a",
+    "b_to_c": f"{_B}:to-c",
+    "c_to_b": f"{_C}:to-b",
+    "destination": f"{_C}:edge",
+}
+PATH_DDS_DATA: dict[str, list[dict[str, object]]] = {
+    "/topologies": DDS_DATA["/topologies"],
+    "/switching-services": DDS_DATA["/switching-services"],
+    "/service-termination-points": [
+        {
+            "id": stp_id,
+            "name": name,
+            "capacity": 1000,
+            "labelGroup": "1000-1999",
+            "switchingServiceId": "urn:ss1",
+        }
+        for name, stp_id in PATH_STPS.items()
+    ],
+    "/service-demarcation-points": [
+        {"stpAId": PATH_STPS["a_to_b"], "stpZId": PATH_STPS["b_to_a"]},
+        {"stpAId": PATH_STPS["b_to_c"], "stpZId": PATH_STPS["c_to_b"]},
+    ],
+}
+
 
 def _recreate_database(db_uri: str) -> None:
     url = make_url(db_uri)
@@ -171,3 +201,26 @@ def stp_subscriptions(switchingservice_subscription: str) -> dict[str, str]:
 @pytest.fixture
 def sdp_subscription(stp_subscriptions: dict[str, str]) -> str:
     return _create("create_sdp", {"service_demarcation_point": "urn:stp1|urn:stp2", "sdp_name": "SDP 1"})
+
+
+@pytest.fixture
+def path_dds(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[dict[str, object]]]:
+    """Like ``dds``, but serving the three-domain chain with real NSI URNs."""
+    monkeypatch.setattr(dds_proxy, "_fetch", lambda path: PATH_DDS_DATA[path])
+    return PATH_DDS_DATA
+
+
+@pytest.fixture
+def path_subscriptions(path_dds: object) -> dict[str, str]:
+    """Subscriptions for the A <-> B <-> C chain; returns the two SDP subscription ids by name."""
+    _create("create_topology", {"topology": "urn:t1"})
+    _create("create_switchingservice", {"switching_service_id": "urn:ss1", "switching_service_name": "SS 1"})
+    for stp_id in PATH_STPS.values():
+        _create("create_stp", {"stp_id": stp_id})
+    return {
+        name: _create(
+            "create_sdp",
+            {"service_demarcation_point": f"{PATH_STPS[a]}|{PATH_STPS[z]}", "sdp_name": name},
+        )
+        for name, (a, z) in {"A <-> B": ("a_to_b", "b_to_a"), "B <-> C": ("b_to_c", "c_to_b")}.items()
+    }

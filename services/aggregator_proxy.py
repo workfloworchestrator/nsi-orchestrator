@@ -59,7 +59,11 @@ class AggregatorP2ps(BaseModel):
 
 
 class AggregatorCriteria(BaseModel):
-    """A reservation's criteria; only the p2ps parameters are modelled."""
+    """A reservation's criteria as returned by the proxy; only the p2ps parameters are modelled.
+
+    Response-side only, so there is no ``ero``: the proxy takes one on reserve but answers with the
+    aggregator's own *resolved* route, which is not what was requested. ``extra="ignore"`` drops it.
+    """
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
 
@@ -123,16 +127,21 @@ def reserve(
     source_stp: str,
     dest_stp: str,
     callback_url: str,
+    ero: list[str] | None = None,
 ) -> str:
     """Reserve a connection and return the aggregator-assigned ``connectionId``.
 
     The ``source_stp`` / ``dest_stp`` strings must already carry their VLAN (``...?vlan=<n>``).
+    ``ero`` is the ordered list of intermediate STPs the path must traverse, without their VLAN.
     The final RESERVED/FAILED status arrives later via the callback to ``callback_url``.
     """
+    p2ps: dict[str, Any] = {"capacity": capacity, "sourceSTP": source_stp, "destSTP": dest_stp}
+    if ero:
+        p2ps["ero"] = ero
     body = {
         "globalReservationId": global_reservation_id,
         "description": description,
-        "criteria": {"p2ps": {"capacity": capacity, "sourceSTP": source_stp, "destSTP": dest_stp}},
+        "criteria": {"p2ps": p2ps},
         "requesterNSA": settings.requester_nsa,
         "providerNSA": settings.provider_nsa,
         "callbackURL": callback_url,
