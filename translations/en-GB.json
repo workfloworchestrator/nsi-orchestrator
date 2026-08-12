@@ -3,7 +3,7 @@
         "fields": {
             "allow_stps_in_sdp": "Allow STPs that are part of an SDP",
             "allow_stps_in_sdp_info": "(use only for debugging!)",
-            "capacity": "Capacity",
+            "capacity": "Capacity (Mbit/s)",
             "circuit_description": "Description",
             "destination_stp": "Destination STP",
             "destination_vlan": "Destination VLAN",

@@ -56,14 +56,14 @@ DDS_DATA: dict[str, list[dict[str, object]]] = {
         {
             "id": "urn:stp1",
             "name": "STP 1",
-            "capacity": 1000,
+            "capacity": 1_000_000_000,
             "labelGroup": "1000-1999",
             "switchingServiceId": "urn:ss1",
         },
         {
             "id": "urn:stp2",
             "name": "STP 2",
-            "capacity": 2000,
+            "capacity": 2_000_000_000,
             "labelGroup": "2000-2999",
             "switchingServiceId": "urn:ss1",
         },
@@ -89,7 +89,7 @@ PATH_DDS_DATA: dict[str, list[dict[str, object]]] = {
         {
             "id": stp_id,
             "name": name,
-            "capacity": 1000,
+            "capacity": 1_000_000_000,
             "labelGroup": "1000-1999",
             "switchingServiceId": "urn:ss1",
         }

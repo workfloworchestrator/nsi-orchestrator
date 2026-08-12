@@ -159,7 +159,8 @@ manage its lifecycle:
 The service termination point (STP) product tracks the NSI STPs advertised in the DDS. Each
 subscription holds an `stp_id`, an editable `stp_name`, the `capacity` and `label_group` (the set of
 VLANs the STP allows) read from the DDS, and a link to the subscribed `SwitchingService` it belongs
-to. Five workflows manage its lifecycle:
+to. `capacity` is stored in **Mbit/s**, the unit every capacity here uses; the DDS advertises it in
+bit/s. Five workflows manage its lifecycle:
 
 - **Create** — presents a dropdown of the STPs the DDS Proxy returns whose switching service is
   already subscribed; `capacity`, `label_group`, and the initial `stp_name` come straight from the DDS.

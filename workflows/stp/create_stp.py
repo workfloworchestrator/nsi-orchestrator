@@ -52,7 +52,7 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
     summary_data = {
         "stp_id": chosen.id,
         "stp_name": chosen.name,
-        "capacity": chosen.capacity,
+        "capacity": chosen.capacity_mbits,
         "label_group": chosen.label_group,
     }
     yield from create_summary_form(summary_data, product_name, summary_fields)
@@ -63,7 +63,7 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
         "customer_id": app_settings.DEFAULT_CUSTOMER_IDENTIFIER,
         "stp_id": chosen.id,
         "stp_name": chosen.name,
-        "capacity": chosen.capacity,
+        "capacity": chosen.capacity_mbits,
         "label_group": chosen.label_group,
         "switching_service_id": chosen.switching_service_id,
     }

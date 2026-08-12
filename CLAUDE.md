@@ -90,6 +90,9 @@ Both need the pgvector extension.
 
 ## Gotchas
 
+- **Capacity is Mbit/s throughout; NML/DDS is bit/s.** `DdsServiceTerminationPoint.capacity_bits` is
+  the raw wire value — always store and compare via `capacity_mbits`.
+
 - **Don't name a product-block field `description` or `label`** — both collide with
   `ProductBlockModel`'s own fields (`description` is the editable block description; `label` is an
   instance field that makes `Block.new(label=...)` raise). The VC uses `circuit_description`; the SAP

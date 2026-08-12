@@ -32,7 +32,7 @@ def reconcile_dds_attributes(subscription: ServiceTerminationPoint) -> State:
     """
     stp_by_id = {stp.id: stp for stp in fetch_service_termination_points()}
     if (dds_stp := stp_by_id.get(subscription.stp.stp_id)) is not None:
-        subscription.stp.capacity = dds_stp.capacity
+        subscription.stp.capacity = dds_stp.capacity_mbits
         subscription.stp.label_group = dds_stp.label_group
 
     return {"subscription": subscription}

@@ -30,13 +30,28 @@ def test_dds_stp_parses_camelcase_aliases() -> None:
         {"id": "stp-1", "name": "STP 1", "capacity": 100, "labelGroup": "vlan", "switchingServiceId": "ss-1"}
     )
 
-    assert (stp.id, stp.name, stp.capacity, stp.label_group, stp.switching_service_id) == (
+    assert (stp.id, stp.name, stp.capacity_bits, stp.label_group, stp.switching_service_id) == (
         "stp-1",
         "STP 1",
         100,
         "vlan",
         "ss-1",
     )
+
+
+@pytest.mark.parametrize(
+    ("capacity_bits", "expected_mbits"),
+    [
+        pytest.param(10_000_000_000, 10_000, id="10-gbit-port"),
+        pytest.param(1_500_000, 1, id="remainder-floored"),
+    ],
+)
+def test_dds_stp_capacity_mbits(capacity_bits: int, expected_mbits: int) -> None:
+    stp = DdsServiceTerminationPoint(
+        id="stp-1", name="STP 1", capacity=capacity_bits, label_group="vlan", switching_service_id="ss-1"
+    )
+
+    assert stp.capacity_mbits == expected_mbits
 
 
 def test_stp_selector_keys_by_id_labels_by_name_and_id() -> None:

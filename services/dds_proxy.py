@@ -30,7 +30,7 @@ from typing import Any
 
 import httpx
 import structlog
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from services.edge_auth import client_kwargs
@@ -81,9 +81,15 @@ class DdsServiceTerminationPoint(BaseModel):
 
     id: str
     name: str
-    capacity: int
+    # NML advertises capacity in bit/s and the proxy mirrors it verbatim; everything this
+    # orchestrator stores is Mbit/s, so the name carries the unit and bit/s stops here.
+    capacity_bits: int = Field(alias="capacity")
     label_group: str
     switching_service_id: str
+
+    @property
+    def capacity_mbits(self) -> int:
+        return self.capacity_bits // 1_000_000
 
 
 class DdsServiceDemarcationPoint(BaseModel):

@@ -69,7 +69,7 @@ def test_reconcile_stp_syncs_dds_attributes(stp_subscriptions: dict[str, str], m
             {
                 "id": "urn:stp1",
                 "name": "STP 1",
-                "capacity": 5000,
+                "capacity": 5_000_000_000,
                 "labelGroup": "3000-3999",
                 "switchingServiceId": "urn:ss1",
             }

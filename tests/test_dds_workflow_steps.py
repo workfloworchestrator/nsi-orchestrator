@@ -90,8 +90,8 @@ def test_validate_sdp_raises_when_pair_gone(monkeypatch: pytest.MonkeyPatch) -> 
         module.validate_sdp_present_in_dds.__wrapped__(subscription=_sdp_subscription())
 
 
-def _dds_stp(capacity: int = 1000, label_group: str = "1000-1999") -> SimpleNamespace:
-    return SimpleNamespace(id="urn:stp1", capacity=capacity, label_group=label_group)
+def _dds_stp(capacity_mbits: int = 1000, label_group: str = "1000-1999") -> SimpleNamespace:
+    return SimpleNamespace(id="urn:stp1", capacity_mbits=capacity_mbits, label_group=label_group)
 
 
 def _stp_subscription() -> SimpleNamespace:
@@ -110,7 +110,7 @@ def test_validate_stp_passes_when_attributes_match(monkeypatch: pytest.MonkeyPat
     "advertised",
     [
         pytest.param([], id="no-longer-advertised"),
-        pytest.param([_dds_stp(capacity=5000)], id="capacity-drift"),
+        pytest.param([_dds_stp(capacity_mbits=5000)], id="capacity-drift"),
         pytest.param([_dds_stp(label_group="3000-3999")], id="vlan-range-drift"),
     ],
 )
@@ -136,7 +136,7 @@ def test_reconcile_stp_dds_attributes(
     monkeypatch.setattr(
         module,
         "fetch_service_termination_points",
-        lambda: [SimpleNamespace(id=advertised_id, capacity=4000, label_group="2000-2999")],
+        lambda: [SimpleNamespace(id=advertised_id, capacity_mbits=4000, label_group="2000-2999")],
     )
 
     subscription = SimpleNamespace(stp=SimpleNamespace(stp_id="x", capacity=1000, label_group="1000-1999"))

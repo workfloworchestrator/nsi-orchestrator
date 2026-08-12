@@ -36,10 +36,10 @@ def validate_stp_present_in_dds(subscription: ServiceTerminationPoint) -> State:
             f"Service termination point {stp_id} is no longer present in the dds-proxy "
             "/service-termination-points endpoint"
         )
-    if dds_stp.capacity != subscription.stp.capacity:
+    if dds_stp.capacity_mbits != subscription.stp.capacity:
         raise AssertionError(
-            f"Service termination point {stp_id} capacity drifted: stored {subscription.stp.capacity}, "
-            f"DDS advertises {dds_stp.capacity}; reconcile to repair"
+            f"Service termination point {stp_id} capacity drifted: stored {subscription.stp.capacity} Mbit/s, "
+            f"DDS advertises {dds_stp.capacity_mbits} Mbit/s; reconcile to repair"
         )
     if dds_stp.label_group != subscription.stp.label_group:
         raise AssertionError(
