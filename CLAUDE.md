@@ -58,13 +58,17 @@ Both need the pgvector extension.
 ## Patterns specific to this repo
 
 - **Auth gate (`auth.py` + `wsgi.py`).** A coarse in-process check plugged into orchestrator-core's
-  `AuthManager` for REST and GraphQL: a request is allowed only when the token's `groups_claim`
-  (default `eduperson_entitlement`) intersects `settings.allowed_groups`. It fails closed and bypasses
-  only when `OAUTH2_ACTIVE` is off. `wsgi.py` also disables the docs/GraphiQL/introspection schema
-  surface and **refuses to boot** when `OAUTH2_ACTIVE` is on but `OAUTH2_AUTHORIZATION_ACTIVE` is off or
-  `allowed_groups` is empty (orchestrator-core's GraphQL layer silently skips authz when that flag is
-  off). `OAUTH2_ACTIVE` defaults on, so local dev runs with `OAUTH2_ACTIVE=false`; the real group lives
-  in deployment config, never in the source default.
+  `AuthManager`, matching the token's `groups_claim` (default `eduperson_entitlement`) against two
+  tiers: `settings.write_groups` for all of REST and the GraphQL mutations, `settings.read_groups`
+  (unioned with the writers) for the GraphQL queries. `GroupGateGraphql` tells the two apart via
+  oauth2-lib's `method` discriminator (see `auth.py`); anything that is not `"QUERY"` falls through
+  to the write set, so a new discriminator fails closed. The gate fails closed and bypasses only
+  when `OAUTH2_ACTIVE` is off. `wsgi.py` also disables the docs/GraphiQL/introspection schema surface
+  and **refuses to boot** when `OAUTH2_ACTIVE` is on but `OAUTH2_AUTHORIZATION_ACTIVE` is off or
+  `write_groups` is empty (orchestrator-core's GraphQL layer silently skips authz when that flag is
+  off). `OAUTH2_ACTIVE` defaults on, so local dev runs with `OAUTH2_ACTIVE=false`; the real groups live
+  in deployment config, never in the source default. Note oauth2-lib's `MUTATIONS_ENABLED` defaults to
+  `False`, so today the mutation branch is never reached — it is the safety net for when that flips.
 - **Async aggregator operations use `callback_step`.** reserve/provision/release/terminate fire a
   request with a `callback_route` (`retry_reservation` chains a terminate and a reserve, the first
   behind a `conditional`), the aggregator-proxy POSTs the result back, and the validate step

@@ -13,12 +13,12 @@
 
 """Coarse, in-process authorization gate: allow only members of configured groups.
 
-orchestrator-core authenticates the OIDC bearer token (via oauth2-lib); this plugs a single
-group check into its ``AuthManager`` for both REST and GraphQL. It is deliberately *not*
-per-workflow policy: a request is allowed if and only if the token's groups claim intersects
-``allowed_groups``. The gate fails closed — a missing/empty user or an absent/garbled claim
-yields no groups and is denied — and only bypasses for local development, where
-``OAUTH2_ACTIVE`` is off and there is no authenticated user to check.
+orchestrator-core authenticates the OIDC bearer token (via oauth2-lib); this plugs a group check
+into its ``AuthManager`` for both REST and GraphQL. It is deliberately *not* per-workflow policy,
+only two tiers: ``write_groups`` for the REST API and the GraphQL mutations, ``read_groups`` (plus
+the writers) for the GraphQL queries. The gate fails closed — a missing/empty user or an
+absent/garbled claim yields no groups and is denied — and only bypasses for local development,
+where ``OAUTH2_ACTIVE`` is off and there is no authenticated user to check.
 """
 
 import re
@@ -34,6 +34,10 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 # The awaiting-process callback route, authenticated by its own path token rather than OIDC.
 _CALLBACK_PATH = re.compile(r"/processes/[^/]+/callback/[^/]+")
+
+# oauth2-lib's discriminator: "QUERY" for query fields, "POST" for mutation fields — not an HTTP
+# verb, and not the field name (that is the request path). Anything else falls through to writers.
+_GRAPHQL_QUERY = "QUERY"
 
 
 def _token_groups(user: OIDCUserModel | None, claim: str) -> set[str]:
@@ -75,10 +79,10 @@ class NamedEmailUserModel(OIDCUserModel):
 
 
 class GroupGate(Authorization):
-    """REST authorization: allow a request when the token shares a group with ``allowed_groups``."""
+    """REST and websocket authorization: the whole API is a write surface, so writers only."""
 
-    def __init__(self, allowed_groups: Iterable[str], groups_claim: str) -> None:
-        self.allowed_groups = set(allowed_groups)
+    def __init__(self, write_groups: Iterable[str], groups_claim: str) -> None:
+        self.write_groups = set(write_groups)
         self.groups_claim = groups_claim
 
     async def authorize(self, request: HTTPConnection, user: OIDCUserModel) -> bool | None:
@@ -90,20 +94,26 @@ class GroupGate(Authorization):
         # UserinfoOIDCAuth.is_bypassable_request), so skip the group gate for it too.
         if _CALLBACK_PATH.search(request.url.path):
             return None
-        return _is_member(user, self.allowed_groups, self.groups_claim)
+        return _is_member(user, self.write_groups, self.groups_claim)
 
 
 class GroupGateGraphql(GraphqlAuthorization):
-    """GraphQL authorization: the identical coarse group check as :class:`GroupGate`."""
+    """GraphQL authorization: readers may query, only writers may mutate.
 
-    def __init__(self, allowed_groups: Iterable[str], groups_claim: str) -> None:
-        self.allowed_groups = set(allowed_groups)
+    The field being resolved is in ``request``, which this coarse gate ignores, so a reader gets the
+    whole query surface.
+    """
+
+    def __init__(self, read_groups: Iterable[str], write_groups: Iterable[str], groups_claim: str) -> None:
+        self.write_groups = set(write_groups)
+        self.read_groups = set(read_groups) | self.write_groups
         self.groups_claim = groups_claim
 
     async def authorize(self, request: RequestPath, method: str, user: OIDCUserModel) -> bool | None:
         if not oauth2lib_settings.OAUTH2_ACTIVE:
             return None
-        return _is_member(user, self.allowed_groups, self.groups_claim)
+        allowed = self.read_groups if method == _GRAPHQL_QUERY else self.write_groups
+        return _is_member(user, allowed, self.groups_claim)
 
 
 class UserinfoOIDCAuth(OIDCAuth):

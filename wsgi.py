@@ -35,8 +35,8 @@ from settings import settings, use_psycopg_driver
 if oauth2lib_settings.OAUTH2_ACTIVE:
     if not oauth2lib_settings.OAUTH2_AUTHORIZATION_ACTIVE:
         raise RuntimeError("OAUTH2_AUTHORIZATION_ACTIVE must be true when OAUTH2_ACTIVE is true")
-    if not settings.allowed_groups:
-        raise RuntimeError("ALLOWED_GROUPS must be set when OAUTH2_ACTIVE is true")
+    if not settings.write_groups:
+        raise RuntimeError("WRITE_GROUPS must be set when OAUTH2_ACTIVE is true")
 
 # Serve our project translations from ./translations unless overridden via TRANSLATIONS_DIR.
 if app_settings.TRANSLATIONS_DIR is None:
@@ -57,7 +57,8 @@ app = OrchestratorCore(base_settings=app_settings, **docs)
 logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
 
 # Authenticate bearer tokens via the OIDC provider's userinfo endpoint (orchestrator-core ships
-# only the abstract OIDCAuth), then restrict access to members of allowed_groups on REST + GraphQL.
+# only the abstract OIDCAuth), then gate REST and GraphQL mutations on write_groups and GraphQL
+# queries on read_groups as well.
 app.register_authentication(
     UserinfoOIDCAuth(
         openid_url=oauth2lib_settings.OIDC_BASE_URL,
@@ -67,8 +68,8 @@ app.register_authentication(
         oidc_user_model_cls=NamedEmailUserModel,
     )
 )
-app.register_authorization(GroupGate(settings.allowed_groups, settings.groups_claim))
-app.register_graphql_authorization(GroupGateGraphql(settings.allowed_groups, settings.groups_claim))
+app.register_authorization(GroupGate(settings.write_groups, settings.groups_claim))
+app.register_graphql_authorization(GroupGateGraphql(settings.read_groups, settings.write_groups, settings.groups_claim))
 
 # Keep orchestrator-core's default GraphQL extensions and additionally forbid schema introspection.
 extensions = [*get_extensions(Mutation, Query), AddValidationRules([NoSchemaIntrospectionCustomRule])]

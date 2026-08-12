@@ -67,13 +67,11 @@ class Settings(BaseSettings):
     # URL the proxy can reach. Override in every deployment.
     orchestrator_callback_base_url: str = "http://localhost:8080"
 
-    # Access control. orchestrator-core authenticates the OIDC bearer token; the in-process gate
-    # (auth.py) then allows only callers whose groups claim intersects allowed_groups. This is a
-    # single coarse check over every REST + GraphQL request, not per-workflow policy. Left empty
-    # here on purpose — the actual group identifier is deployment config; set ALLOWED_GROUPS
-    # (JSON list) and, per identity provider, GROUPS_CLAIM via the environment. wsgi.py refuses to
-    # start with an empty allowed_groups once authentication is enabled.
-    allowed_groups: list[str] = []
+    # Access control (auth.py): write_groups grants REST + GraphQL mutations, read_groups grants
+    # GraphQL queries only; writers are implicitly readers. The group identifiers are deployment
+    # config (JSON lists), and wsgi.py refuses to start with empty write_groups once auth is on.
+    read_groups: list[str] = []
+    write_groups: list[str] = []
     groups_claim: str = "eduperson_entitlement"
 
     # Serve the OpenAPI docs endpoints (/api/docs, /api/openapi.json, /api/redoc). Off by default

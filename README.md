@@ -286,6 +286,22 @@ addition:
 | `ORCHESTRATOR_CALLBACK_BASE_URL` | `http://localhost:8080` | This orchestrator's externally reachable base URL; the Aggregator Proxy POSTs reservation results to `<base>/api/processes/{id}/callback/{token}`. Override in every deployment. |
 | `AGGREGATOR_CALLBACK_TIMEOUT` | `540` | Backstop timeout (seconds) for the aggregator callback steps; a step still awaiting a callback after this is failed so it can be retried or aborted. Sized above the proxy's worst case (`NSI_TIMEOUT` + `DATAPLANE_TIMEOUT`) plus the ~30s sweep granularity. |
 
+### Access control
+
+orchestrator-core authenticates the OIDC bearer token; the in-process gate in `auth.py` then matches
+the token's groups claim against two coarse tiers. It is not per-workflow policy: read access is
+all-or-nothing over the GraphQL query surface.
+
+| Variable | Default | Description |
+|---|---|---|
+| `WRITE_GROUPS` | `[]` | JSON list of groups granted the full REST API (starting, resuming and retrying workflows) and the GraphQL mutations. Required — the app refuses to start without it when authentication is on. |
+| `READ_GROUPS` | `[]` | JSON list of groups granted the GraphQL queries only. Writers are implicitly readers, so an operator group is listed in `WRITE_GROUPS` alone. |
+| `GROUPS_CLAIM` | `eduperson_entitlement` | Token claim carrying group membership; depends on the identity provider. |
+
+`READ_GROUPS` is what lets a read-only consumer such as
+[AMISS](https://github.com/workfloworchestrator/nsi-mgmt-info) — which forwards the end user's token
+and only ever queries — serve users who must not be able to change anything.
+
 ### Default customer
 
 This orchestrator has no CRM, so subscriptions are created against orchestrator-core's
@@ -313,9 +329,9 @@ OAUTH2_ACTIVE=false uv run uvicorn wsgi:app --host 0.0.0.0 --port 8080  # run th
 
 `main.py` exposes the orchestrator-core CLI (`db`, `scheduler`, `generate`, …); `wsgi:app` is the
 FastAPI/`OrchestratorCore` application served in the container (see the `Dockerfile`). The app gates
-REST and GraphQL on membership of `ALLOWED_GROUPS` (an OIDC groups claim); with the orchestrator-core
-default `OAUTH2_ACTIVE=true` it refuses to start unless a group is configured, so local runs set
-`OAUTH2_ACTIVE=false`.
+REST and the GraphQL mutations on `WRITE_GROUPS` and the GraphQL queries on `READ_GROUPS` as well
+(see [Access control](#access-control)); with the orchestrator-core default `OAUTH2_ACTIVE=true` it
+refuses to start unless `WRITE_GROUPS` is configured, so local runs set `OAUTH2_ACTIVE=false`.
 
 A process records its initiator as `Full Name <email>` in the **Created By** field, from the `name`
 and `email` claims returned by the provider's userinfo endpoint. The email is only present when the

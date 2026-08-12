@@ -23,13 +23,14 @@ fullnameOverride: ""
 #  REQUESTER_NSA: "urn:ogf:network:example.net:2026:nsa:nsi-orchestrator"
 #  PROVIDER_NSA: "urn:ogf:network:example.net:2026:nsa:safnari"
 #  ORCHESTRATOR_CALLBACK_BASE_URL: "https://orchestrator.example.net"
-#  # Authentication (oauth2-lib) pointed at the OIDC provider; the operators gate (auth.py).
+#  # Authentication (oauth2-lib) pointed at the OIDC provider; the read/write group gate (auth.py).
 #  OAUTH2_ACTIVE: "true"
 #  OAUTH2_AUTHORIZATION_ACTIVE: "true"
 #  OAUTH2_RESOURCE_SERVER_ID: "orchestrator-rs.example.net"
 #  OIDC_BASE_URL: "https://proxy.example.net"
 #  OIDC_CONF_URL: "https://proxy.example.net/.well-known/openid-configuration"
-#  ALLOWED_GROUPS: '["urn:example:group:operators"]'
+#  WRITE_GROUPS: '["urn:example:group:operators"]'
+#  READ_GROUPS: '["urn:example:group:users"]'
 #  GROUPS_CLAIM: "eduperson_entitlement"
 #  LOG_LEVEL: "INFO"
 
