@@ -44,12 +44,11 @@ The diagram below shows the ANA-GRAM automation stack and how the NSI Orchestrat
 |-------|---------|
 | Purple | Existing software deployed in every participating network |
 | Green | Existing NSI infrastructure software |
-| Orange | Software being developed as part of ANA-GRAM |
-| Yellow | Future software to be developed as part of ANA-GRAM |
+| Orange | Software developed as part of ANA-GRAM |
 
 **Components:**
 
-- [**ANA Frontend**](https://github.com/workfloworchestrator) — Future management portal that will provide a comprehensive overview of all configured services on the ANA infrastructure, including real-time operational status information. It will communicate with the NSI Orchestrator as its backend.
+- [**AMISS**](https://github.com/workfloworchestrator/nsi-mgmt-info) — The NSI Management Information Service, a read-only management portal giving an overview of the services configured on the ANA infrastructure and their operational status. It queries the NSI Orchestrator as its source of truth and the DDS Proxy to reconcile the known topology against it.
 - [**NSI Orchestrator**](https://github.com/workfloworchestrator/nsi-orchestrator) (this repository) — Central orchestration layer that manages the lifecycle of topologies, switching services, STPs, SDPs, and multi-domain connections. It uses the DDS Proxy for topology visibility and the NSI Aggregator Proxy as its Network Resource Manager.
 - [**DDS Proxy**](https://github.com/workfloworchestrator/nsi-dds-proxy) — Fetches NML topology documents from the upstream DDS, parses them, and exposes the data as a JSON REST API. The NSI Orchestrator uses this to discover and synchronize topologies, switching services, STPs, and SDPs.
 - [**NSI Aggregator Proxy**](https://github.com/workfloworchestrator/nsi-aggregator-proxy) — Translates simple REST/JSON calls into NSI Connection Service v2 SOAP messages toward the NSI Aggregator, abstracting NSI protocol complexity behind a linear state machine. The NSI Orchestrator uses this as its Network Resource Manager to provision and manage multi-domain connections.
