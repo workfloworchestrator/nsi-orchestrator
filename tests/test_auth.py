@@ -25,7 +25,7 @@ import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from fastapi import HTTPException
 from graphql.pyutils import Path
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from oauth2_lib.fastapi import AuthManager, OIDCConfig, OIDCUserModel
 from oauth2_lib.settings import oauth2lib_settings
 from oauth2_lib.strawberry import IsAuthorizedForMutation, IsAuthorizedForQuery, OauthContext, OauthInfo
