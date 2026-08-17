@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from http import HTTPStatus
 
 from fastapi import HTTPException
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from oauth2_lib.fastapi import Authorization, GraphqlAuthorization, OIDCAuth, OIDCUserModel, RequestPath
 from oauth2_lib.settings import oauth2lib_settings
 from starlette.requests import HTTPConnection, Request
