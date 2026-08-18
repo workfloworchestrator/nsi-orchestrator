@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+import httpx2
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -83,8 +83,8 @@ class AggregatorReservation(BaseModel):
     criteria: AggregatorCriteria | None = None
 
 
-def _client() -> httpx.Client:
-    return httpx.Client(
+def _client() -> httpx2.Client:
+    return httpx2.Client(
         base_url=settings.aggregator_proxy_base_url,
         timeout=settings.aggregator_proxy_timeout,
         **client_kwargs(
@@ -98,13 +98,13 @@ def _client() -> httpx.Client:
     )
 
 
-def _request(method: str, path: str, *, json: dict[str, Any] | None = None) -> httpx.Response:
+def _request(method: str, path: str, *, json: dict[str, Any] | None = None) -> httpx2.Response:
     """Send a request to the aggregator-proxy and return the response, raising on error."""
     with _client() as client:
         try:
             response = client.request(method, path, json=json)
             response.raise_for_status()
-        except httpx.HTTPError as exc:
+        except httpx2.HTTPError as exc:
             logger.warning(
                 "aggregator-proxy request failed",
                 method=method,
@@ -112,7 +112,7 @@ def _request(method: str, path: str, *, json: dict[str, Any] | None = None) -> h
                 base_url=settings.aggregator_proxy_base_url,
                 error=str(exc),
             )
-            # Suppress the httpx/httpcore chain: the cause is already folded into the message.
+            # Suppress the httpx2/httpcore chain: the cause is already folded into the message.
             raise AggregatorProxyError(
                 f"{method} {path} on aggregator-proxy at {settings.aggregator_proxy_base_url} failed: {exc}"
             ) from None

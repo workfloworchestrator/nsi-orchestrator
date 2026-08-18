@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import httpx
+import httpx2
 import pytest
 
 from services import dds_proxy
@@ -84,23 +84,23 @@ def test_client_kwargs_mtls(
 
 
 def _install_mock_transport(
-    monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]
+    monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx2.Request], httpx2.Response]
 ) -> None:
-    """Replace httpx.Client in the dds_proxy module with one backed by a mock transport."""
-    real_client = httpx.Client  # capture before patching, else the factory recurses
+    """Replace httpx2.Client in the dds_proxy module with one backed by a mock transport."""
+    real_client = httpx2.Client  # capture before patching, else the factory recurses
 
-    def factory(**kwargs: object) -> httpx.Client:
+    def factory(**kwargs: object) -> httpx2.Client:
         base_url = kwargs.get("base_url", "")
         assert isinstance(base_url, str)
-        return real_client(base_url=base_url, transport=httpx.MockTransport(handler))
+        return real_client(base_url=base_url, transport=httpx2.MockTransport(handler))
 
-    monkeypatch.setattr(dds_proxy.httpx, "Client", factory)
+    monkeypatch.setattr(dds_proxy.httpx2, "Client", factory)
 
 
 def test_fetch_topologies_parses_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         assert request.url.path == "/topologies"
-        return httpx.Response(200, json=TOPOLOGIES_JSON)
+        return httpx2.Response(200, json=TOPOLOGIES_JSON)
 
     _install_mock_transport(monkeypatch, handler)
 
@@ -114,8 +114,8 @@ def test_fetch_topologies_parses_response(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_fetch_topologies_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(502, text="bad gateway")
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(502, text="bad gateway")
 
     _install_mock_transport(monkeypatch, handler)
 

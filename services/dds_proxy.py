@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+import httpx2
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -105,7 +105,7 @@ class DdsServiceDemarcationPoint(BaseModel):
 
 
 def _client_kwargs() -> dict[str, Any]:
-    """Build the httpx client arguments for the configured authentication mode."""
+    """Build the httpx2 client arguments for the configured authentication mode."""
     return client_kwargs(
         mtls_enabled=settings.dds_proxy_mtls_enabled,
         client_cert=settings.dds_proxy_client_cert,
@@ -122,7 +122,7 @@ def _fetch(path: str) -> list[dict[str, Any]]:
     Raises:
         DdsProxyError: when the proxy cannot be reached or returns an error response.
     """
-    with httpx.Client(
+    with httpx2.Client(
         base_url=settings.dds_proxy_base_url,
         timeout=settings.dds_proxy_timeout,
         **_client_kwargs(),
@@ -130,14 +130,14 @@ def _fetch(path: str) -> list[dict[str, Any]]:
         try:
             response = client.get(path)
             response.raise_for_status()
-        except httpx.HTTPError as exc:
+        except httpx2.HTTPError as exc:
             logger.warning(
                 "dds-proxy request failed",
                 path=path,
                 base_url=settings.dds_proxy_base_url,
                 error=str(exc),
             )
-            # Suppress the httpx/httpcore chain: the cause is already folded into the message.
+            # Suppress the httpx2/httpcore chain: the cause is already folded into the message.
             raise DdsProxyError(
                 f"Could not fetch {path} from dds-proxy at {settings.dds_proxy_base_url}: {exc}"
             ) from None

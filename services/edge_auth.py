@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared httpx client authentication for the NSI REST proxies (dds-proxy, aggregator-proxy).
+"""Shared httpx2 client authentication for the NSI REST proxies (dds-proxy, aggregator-proxy).
 
 Both proxies trust the same edge identity: real mutual TLS against the public endpoint when
 deployed, or the edge identity headers as a local-development shortcut when mTLS is disabled.
@@ -31,7 +31,7 @@ def client_kwargs(
     auth_method: str,
     client_dn: str,
 ) -> dict[str, Any]:
-    """Build the httpx client arguments for the configured authentication mode."""
+    """Build the httpx2 client arguments for the configured authentication mode."""
     if mtls_enabled:
         cert: str | tuple[str, str] | None = (client_cert, client_key) if client_cert and client_key else client_cert
         return {"cert": cert, "verify": ca_bundle or True}
