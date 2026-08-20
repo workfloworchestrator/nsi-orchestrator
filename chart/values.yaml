@@ -6,7 +6,7 @@ image:
   repository: ghcr.io/workfloworchestrator/nsi-orchestrator
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "latest@sha256:7861902c502a0ae228e6de51d8c1bee7c9b76678e3bdf0f882fb5ae8f37e66bf"
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
