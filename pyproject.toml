@@ -6,8 +6,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "httpx2==2.10.0",
-    "oauth2-lib==3.0.0",
-    "orchestrator-core==5.2.0",
+    "oauth2-lib==3.0.1",
+    "orchestrator-core==5.3.0",
     "pydantic-settings==2.15.0",
     "python-statemachine==3.2.1",
 ]
