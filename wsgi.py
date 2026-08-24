@@ -11,10 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.metadata
 import logging
 from pathlib import Path
 from typing import Any
 
+import structlog
 from graphql.validation import NoSchemaIntrospectionCustomRule
 from oauth2_lib.settings import oauth2lib_settings
 from orchestrator.core import OrchestratorCore
@@ -55,6 +57,8 @@ app = OrchestratorCore(base_settings=app_settings, **docs)
 # OrchestratorCore ran initialise_logging above; add the filter afterwards so it survives. The health
 # probe fires every few seconds and would otherwise dominate the access log.
 logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
+
+structlog.get_logger(__name__).info("Starting nsi-orchestrator", version=importlib.metadata.version("nsi-orchestrator"))
 
 # Authenticate bearer tokens via the OIDC provider's userinfo endpoint (orchestrator-core ships
 # only the abstract OIDCAuth), then gate REST and GraphQL mutations on write_groups and GraphQL

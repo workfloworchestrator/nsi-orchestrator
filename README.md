@@ -353,6 +353,26 @@ uv run python main.py generate migration     --config-file templates/<product>.y
 New products and workflows are registered by importing `products` and `workflows` in `main.py` /
 `wsgi.py`; the per-product workflow instances live in [`workflows/__init__.py`](workflows/__init__.py).
 
+### Versioning
+
+The release git tag is the only place a version is written by hand. `pyproject.toml` declares
+`dynamic = ["version"]` and setuptools-scm derives it: a tag builds `0.3.0`, any other commit builds
+the next patch as a dev release with its commit, `0.3.1.dev3+g868d64b`. The app reports that version
+at startup and via `importlib.metadata.version("nsi-orchestrator")`.
+
+The container build has no `.git` (it is excluded by `.dockerignore`), so `.github/workflows/container.yml`
+checks out with `fetch-depth: 0`, resolves the version on the runner, and passes it to the build as
+`--build-arg VERSION=...`, which the `Dockerfile` hands to setuptools-scm as
+`SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NSI_ORCHESTRATOR`. A build without that argument fails rather
+than producing a mislabelled image:
+
+```shell
+docker build --build-arg VERSION="$(uvx --from setuptools-scm python -m setuptools_scm)" .
+```
+
+The Helm chart is versioned the same way from the same tag, but independently — see
+`.github/workflows/chart.yml` and the `0.0.0` placeholders in `chart/Chart.yaml`.
+
 ### Tests, linting, and types
 
 ```shell

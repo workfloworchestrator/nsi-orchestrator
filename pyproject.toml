@@ -1,6 +1,6 @@
 [project]
 name = "nsi-orchestrator"
-version = "0.1.1.dev1"
+dynamic = ["version"]
 description = "NSI WFO implentation"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -16,8 +16,10 @@ dependencies = [
 nsi-orchestrator = "main:init_cli_app"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
 
 [tool.setuptools]
 py-modules = ["auth", "log_filters", "main", "settings", "wsgi"]

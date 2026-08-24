@@ -88,6 +88,13 @@ Both need the pgvector extension.
 - **State-gating** (e.g. provision only when RESERVED) happens in the form generator via
   `raise_form_validation_error(...)`, not in a workflow step, so the user sees it before the run starts.
 
+- **The version is the git tag; never edit it.** `pyproject.toml` is `dynamic = ["version"]` with
+  setuptools-scm, so a tag builds `0.3.0` and any other commit builds `0.3.1.dev<n>+g<sha>`. The
+  container build has no `.git`, so `container.yml` resolves the version on the runner and passes
+  `--build-arg VERSION`, which the `Dockerfile` exports as
+  `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NSI_ORCHESTRATOR`. Omitting it fails the build by design. `uv.lock`
+  records the project as `(dynamic)` and so does not churn per commit. See README **Versioning**.
+
 ## Gotchas
 
 - **Capacity is Mbit/s throughout; NML/DDS is bit/s.** `DdsServiceTerminationPoint.capacity_bits` is
