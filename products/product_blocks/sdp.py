@@ -41,7 +41,7 @@ class ServiceDemarcationPointBlockProvisioning(
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"sdp {self.sdp_name}"
+        return self.sdp_name
 
 
 class ServiceDemarcationPointBlock(ServiceDemarcationPointBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):

@@ -43,7 +43,7 @@ class ServiceTerminationPointBlockProvisioning(
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"stp {self.stp_id.removeprefix('urn:ogf:network:')}"
+        return self.stp_name
 
 
 class ServiceTerminationPointBlock(ServiceTerminationPointBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):

@@ -41,7 +41,7 @@ class SdpConstraintBlockProvisioning(SdpConstraintBlockInactive, lifecycle=[Subs
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"sdp_constraint {self.constraint_type} {self.sdp.sdp_name}"
+        return f"{self.constraint_type} {self.sdp.sdp_name}"
 
 
 class SdpConstraintBlock(SdpConstraintBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
