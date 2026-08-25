@@ -31,44 +31,8 @@ from tests.workflows import (
     resume_callback,
     run_workflow,
 )
+from tests.workflows.conftest import MDP2P_CREATE_FORM as _CREATE_FORM
 from tests.workflows.conftest import PATH_STPS
-
-_CREATE_FORM = {
-    "circuit_description": "Test VC",
-    "service_speed": 1000,
-    "source_stp": "urn:stp1",
-    "source_vlan": 1500,
-    "destination_stp": "urn:stp2",
-    "destination_vlan": 2500,
-    "allow_stps_in_sdp": True,  # stp1/stp2 are paired in the seed SDP
-    "include_sdps": [],
-    "exclude_sdps": [],
-}
-
-
-@pytest.fixture
-def aggregator(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Mock the aggregator-proxy so the form and the reserve/provision/etc. steps need no network."""
-    from workflows.mdp2p.shared import forms
-
-    # forms.py imported list_reservations by name, so patch its binding (not the module attribute).
-    monkeypatch.setattr(forms, "list_reservations", list)
-    monkeypatch.setattr(aggregator_proxy, "reserve", lambda **_kwargs: "conn-1")
-    monkeypatch.setattr(aggregator_proxy, "provision", lambda _cid, _url: None)
-    monkeypatch.setattr(aggregator_proxy, "release", lambda _cid, _url: None)
-    monkeypatch.setattr(aggregator_proxy, "terminate", lambda _cid, _url: None)
-
-
-@pytest.fixture
-def mdp2p_subscription(stp_subscriptions: dict[str, str], sdp_subscription: str, aggregator: None) -> str:
-    """A RESERVED MDP2P connection (create + the reserve callback)."""
-    result, process, step_log = run_workflow(
-        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, _CREATE_FORM, {}]
-    )
-    assert_awaiting_callback(result)
-    result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-1"})
-    assert_complete(result)
-    return str(extract_state(result)["subscription_id"])
 
 
 def test_create_mdp2p(stp_subscriptions: dict[str, str], sdp_subscription: str, aggregator: None) -> None:
@@ -255,6 +219,25 @@ def test_terminate_mdp2p(mdp2p_subscription: str) -> None:
     subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
     assert subscription.vc.state == "TERMINATED"
     assert subscription.status == SubscriptionLifecycle.TERMINATED
+
+
+def test_terminate_mdp2p_closes_an_already_terminated_connection(
+    mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A connection terminated outside this orchestrator must not strand its subscription."""
+    subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
+    subscription.vc.state = "TERMINATED"
+    subscription.save()
+
+    def _fail(*_args: object) -> None:
+        raise AssertionError("the aggregator must not be asked to terminate an already-terminated connection")
+
+    monkeypatch.setattr(aggregator_proxy, "terminate", _fail)
+
+    result, _, _ = run_workflow("terminate_mdp2p", [{"subscription_id": mdp2p_subscription}, {}])
+
+    assert_complete(result)
+    assert MultiDomainPoint2Point.from_subscription(mdp2p_subscription).status == SubscriptionLifecycle.TERMINATED
 
 
 def test_reconcile_mdp2p_syncs_state(mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch) -> None:

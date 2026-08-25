@@ -42,6 +42,29 @@ Both need the pgvector extension.
 - `workflows/mdp2p/shared/ero.py` — derives the NSI Explicit Route Object from the included SDPs.
   Pure, no I/O; `network_of` mirrors nsi-pce's `SimpleStp.parseNetworkId` (first **six** colon
   components, `?vlan=` stripped first).
+- `workflows/tasks/` — system tasks (`Target.SYSTEM`, `@task()`).
+  `validate_aggregator_against_subscriptions.py` compares the aggregator's live reservations against
+  the MDP2P `connection_id`s in both directions — the one direction `validate_mdp2p` cannot see,
+  since it walks outward from a subscription. Worth doing for the aggregator and *not* the DDS: the
+  aggregator-proxy speaks for a single requester NSA, so a connection without a subscription is
+  anomalous, whereas an unsubscribed DDS entry is the normal state of every ANA peer's topology.
+  Terminated reservations are excluded (their subscriptions are terminated too, so they are already
+  outside `subscribed_values`), and a failed fetch aborts rather than diffing against nothing.
+  `settings.ignored_connection_ids` suppresses known orphans — the aggregator-proxy's list is closed
+  per *requester NSA*, not per client, so anything else talking to that proxy (a manual call, the
+  automation UI) also lands in it. The list applies to the reservation-without-subscription direction
+  only: a subscription whose reservation vanished is a different, more serious fault and must not be
+  silenced by an id that was once an accepted orphan.
+- `schedules.py` — this project's cron entries, registered through core's schedule API by the
+  `scheduler load-project-schedule` command that `main.py` attaches to core's `scheduler` sub-app.
+  It runs as its own scheduler init container, after the one that loops on `load-initial-schedule`
+  until the DB and Redis are up. Deliberately not chained into that loop: only the first command
+  needs the wait, so the second fails fast and a permanent failure — an unregistered workflow name,
+  an unrun migration — crashloops naming the cause rather than printing `waiting for db/redis...`
+  forever. It must run from that singleton and not the multi-replica API app:
+  `add_unique_scheduled_task_to_queue` is not safe for concurrent use. Times are staggered off core's
+  00:10 / 02:30 and off the `:00`/`:30` marks. This is **not** the deprecated `@scheduler` decorator;
+  it drives the same API the UI does.
 - `workflows/shared.py` — cross-product form helpers: `create_summary_form`/`modify_summary_form`,
   `subscription_id_for_value`, `raise_form_validation_error`, and `fetch_for_form` (wraps a proxy
   fetch so a proxy error surfaces as a `FormValidationError` instead of a crashed step).
@@ -94,6 +117,29 @@ Both need the pgvector extension.
   `--build-arg VERSION`, which the `Dockerfile` exports as
   `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NSI_ORCHESTRATOR`. Omitting it fails the build by design. `uv.lock`
   records the project as `(dynamic)` and so does not churn per commit. See README **Versioning**.
+
+- **Register a system task with `create_task`, not `create_workflow`.** It belongs to no product, so
+  it must not be linked into `products_workflows`. `create_task` inserts `target='SYSTEM'` and
+  `is_task=TRUE` itself, and requires a `description` (`workflows.description` is `NOT NULL`).
+- **`load-project-schedule` is only idempotent once a scheduler has run**, exactly as for core's
+  `load-initial-schedule`: `add_unique_scheduled_task_to_queue` dedups against the
+  `workflows_apscheduler_jobs` linker table, which is written when the scheduler drains the queue.
+  Against a database whose scheduler has never run, each invocation queues the job again.
+- **`terminate_mdp2p` accepts `TERMINATED`, and skips the aggregator when it sees it.** `reconcile_mdp2p`
+  syncs `vc.state` to whatever the aggregator reports, `TERMINATED` included, so a connection ended
+  outside this orchestrator lands there. While terminate refused that state there was no workflow able
+  to close the subscription — core ships no force-terminate task — and reconcile, the natural response
+  to the drift, was what stranded it. The FSM has no transition out of `TERMINATED` either, so the
+  callback group is skipped rather than run.
+- **A scheduled task that fails by design must not carry `run_predicate=no_uncompleted_instance`.**
+  The predicate counts `failed` / `inconsistent_data` / `api_unavailable` as uncompleted, and
+  `task_clean_up_tasks` only reaps `completed`, so the first failure would block every later run —
+  silently, logged at INFO by the scheduler. A nightly cron cannot overlap a task that takes seconds.
+- **Raise `AssertionError` for drift, not `InconsistentDataError`.** Only the former reaches
+  `ProcessStatus.INCONSISTENT_DATA` (and the NOC assignee): core's mapping at
+  `services/processes.py` compares the error class name against the literal `"InconsistentData"`,
+  while `errors.py` writes `type(err).__name__`, i.e. `"InconsistentDataError"` — so that branch is
+  dead. A proxy `RuntimeError` (`DdsProxyError` / `AggregatorProxyError`) lands in plain `failed`.
 
 ## Gotchas
 

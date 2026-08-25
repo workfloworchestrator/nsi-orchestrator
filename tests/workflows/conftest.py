@@ -30,6 +30,7 @@ import os
 import subprocess
 import sys
 from contextlib import closing
+from copy import deepcopy
 from pathlib import Path
 from typing import cast
 
@@ -43,7 +44,8 @@ from sqlalchemy.orm.session import close_all_sessions, sessionmaker
 
 import products  # noqa: F401  registers SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  registers the LazyWorkflowInstance entries
-from services import dds_proxy
+from services import aggregator_proxy, dds_proxy
+from workflows.mdp2p.shared import forms
 
 _REPO = Path(__file__).resolve().parents[2]
 
@@ -161,9 +163,10 @@ def db_session(database: object) -> object:
 
 @pytest.fixture
 def dds(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[dict[str, object]]]:
-    """Mock the single dds-proxy ``_fetch`` so every ``fetch_*`` (in any module) returns DDS_DATA."""
-    monkeypatch.setattr(dds_proxy, "_fetch", lambda path: DDS_DATA[path])
-    return DDS_DATA
+    """Mock the dds-proxy ``_fetch``; a per-test deep copy, so a test can edit it to simulate drift."""
+    data = deepcopy(DDS_DATA)
+    monkeypatch.setattr(dds_proxy, "_fetch", lambda path: data[path])
+    return data
 
 
 def _create(workflow_key: str, *form_pages: dict[str, object]) -> str:
@@ -201,6 +204,52 @@ def stp_subscriptions(switchingservice_subscription: str) -> dict[str, str]:
 @pytest.fixture
 def sdp_subscription(stp_subscriptions: dict[str, str]) -> str:
     return _create("create_sdp", {"service_demarcation_point": "urn:stp1|urn:stp2", "sdp_name": "SDP 1"})
+
+
+# The last link in the seed chain: a RESERVED MDP2P connection over the two seed STPs.
+MDP2P_CREATE_FORM: dict[str, object] = {
+    "circuit_description": "Test VC",
+    "service_speed": 1000,
+    "source_stp": "urn:stp1",
+    "source_vlan": 1500,
+    "destination_stp": "urn:stp2",
+    "destination_vlan": 2500,
+    "allow_stps_in_sdp": True,  # stp1/stp2 are paired in the seed SDP
+    "include_sdps": [],
+    "exclude_sdps": [],
+}
+
+
+@pytest.fixture
+def aggregator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mock the aggregator-proxy so the form and the reserve/provision/etc. steps need no network."""
+    # forms.py imported list_reservations by name, so patch its binding (not the module attribute).
+    monkeypatch.setattr(forms, "list_reservations", list)
+    monkeypatch.setattr(aggregator_proxy, "reserve", lambda **_kwargs: "conn-1")
+    monkeypatch.setattr(aggregator_proxy, "provision", lambda _cid, _url: None)
+    monkeypatch.setattr(aggregator_proxy, "release", lambda _cid, _url: None)
+    monkeypatch.setattr(aggregator_proxy, "terminate", lambda _cid, _url: None)
+
+
+@pytest.fixture
+def mdp2p_subscription(stp_subscriptions: dict[str, str], sdp_subscription: str, aggregator: None) -> str:
+    """A RESERVED MDP2P connection (create + the reserve callback)."""
+    from tests.workflows import (
+        assert_awaiting_callback,
+        assert_complete,
+        extract_state,
+        product_id,
+        resume_callback,
+        run_workflow,
+    )
+
+    result, process, step_log = run_workflow(
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, MDP2P_CREATE_FORM, {}]
+    )
+    assert_awaiting_callback(result)
+    result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-1"})
+    assert_complete(result)
+    return str(extract_state(result)["subscription_id"])
 
 
 @pytest.fixture

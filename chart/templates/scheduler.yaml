@@ -35,13 +35,24 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      # Seed the standard periodic schedules (idempotent), retrying until the database and redis are
-      # reachable, then the main container runs the loop that drains the queue and executes tasks.
+      # Seed the schedules (idempotent); the main container then drains the queue and runs tasks.
+      # Separate containers so only the first waits for db/redis and the second can fail fast.
       initContainers:
         - name: {{ .Chart.Name }}-load-schedule
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "until python -m main scheduler load-initial-schedule; do echo 'waiting for db/redis...'; sleep 3; done"]
+          {{- include "nsi-orchestrator.schedulerEnv" . | nindent 10 }}
+          {{- if .Values.secretProviderClass.enabled }}
+          volumeMounts:
+            - name: secret-store
+              mountPath: "/mnt/secret-store"
+              readOnly: true
+          {{- end }}
+        - name: {{ .Chart.Name }}-load-project-schedule
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "main", "scheduler", "load-project-schedule"]
           {{- include "nsi-orchestrator.schedulerEnv" . | nindent 10 }}
           {{- if .Values.secretProviderClass.enabled }}
           volumeMounts:

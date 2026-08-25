@@ -17,7 +17,7 @@ from uuid import UUID
 import structlog
 from orchestrator.core.forms import FormPage
 from orchestrator.core.forms.validators import DisplaySubscription
-from orchestrator.core.workflow import StepList, begin, callback_step, step
+from orchestrator.core.workflow import StepList, begin, callback_step, conditional, step
 from orchestrator.core.workflows.utils import terminate_workflow
 from pydantic import Field
 from pydantic_forms.types import InputForm, State, UUIDstr
@@ -31,12 +31,19 @@ from workflows.shared import raise_form_validation_error
 
 logger = structlog.get_logger(__name__)
 
+# TERMINATED included so an externally ended connection can still be closed; see CLAUDE.md.
+TERMINABLE_STATES = frozenset({ConnectionState.RESERVED, ConnectionState.FAILED, ConnectionState.TERMINATED})
+
+# Nothing to tear down when the aggregator has already terminated the connection.
+still_at_aggregator = conditional(lambda state: state["subscription"]["vc"]["state"] != ConnectionState.TERMINATED)
+
 
 def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id: UUIDstr) -> InputForm:
     subscription = MultiDomainPoint2Point.from_subscription(subscription_id)
-    if subscription.vc.state not in (ConnectionState.RESERVED, ConnectionState.FAILED):
+    if subscription.vc.state not in TERMINABLE_STATES:
         raise_form_validation_error(
-            f"Connection must be RESERVED or FAILED to terminate, not {subscription.vc.state}; release it first"
+            f"Connection must be RESERVED, FAILED or TERMINATED to terminate, not {subscription.vc.state}; "
+            "release it first"
         )
     SubscriptionId = Annotated[DisplaySubscription, Field(UUID(subscription_id))]
 
@@ -63,9 +70,11 @@ def process_terminate_result(subscription: MultiDomainPoint2Point, callback_resu
 
 @terminate_workflow(initial_input_form=terminate_initial_input_form_generator)
 def terminate_mdp2p() -> StepList:
-    return begin >> callback_step(
-        name=f"Terminate connection (timeout {settings.aggregator_callback_timeout} seconds)",
-        action_step=terminate_connection,
-        validate_step=process_terminate_result,
-        timeout=settings.aggregator_callback_timeout,
+    return begin >> still_at_aggregator(
+        callback_step(
+            name=f"Terminate connection (timeout {settings.aggregator_callback_timeout} seconds)",
+            action_step=terminate_connection,
+            validate_step=process_terminate_result,
+            timeout=settings.aggregator_callback_timeout,
+        )
     )
