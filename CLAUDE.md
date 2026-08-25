@@ -125,6 +125,12 @@ Both need the pgvector extension.
   `load-initial-schedule`: `add_unique_scheduled_task_to_queue` dedups against the
   `workflows_apscheduler_jobs` linker table, which is written when the scheduler drains the queue.
   Against a database whose scheduler has never run, each invocation queues the job again.
+- **`terminate_mdp2p` accepts `TERMINATED`, and skips the aggregator when it sees it.** `reconcile_mdp2p`
+  syncs `vc.state` to whatever the aggregator reports, `TERMINATED` included, so a connection ended
+  outside this orchestrator lands there. While terminate refused that state there was no workflow able
+  to close the subscription — core ships no force-terminate task — and reconcile, the natural response
+  to the drift, was what stranded it. The FSM has no transition out of `TERMINATED` either, so the
+  callback group is skipped rather than run.
 - **A scheduled task that fails by design must not carry `run_predicate=no_uncompleted_instance`.**
   The predicate counts `failed` / `inconsistent_data` / `api_unavailable` as uncompleted, and
   `task_clean_up_tasks` only reaps `completed`, so the first failure would block every later run —

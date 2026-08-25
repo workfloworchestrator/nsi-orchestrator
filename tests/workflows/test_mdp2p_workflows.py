@@ -221,6 +221,25 @@ def test_terminate_mdp2p(mdp2p_subscription: str) -> None:
     assert subscription.status == SubscriptionLifecycle.TERMINATED
 
 
+def test_terminate_mdp2p_closes_an_already_terminated_connection(
+    mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A connection terminated outside this orchestrator must not strand its subscription."""
+    subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
+    subscription.vc.state = "TERMINATED"
+    subscription.save()
+
+    def _fail(*_args: object) -> None:
+        raise AssertionError("the aggregator must not be asked to terminate an already-terminated connection")
+
+    monkeypatch.setattr(aggregator_proxy, "terminate", _fail)
+
+    result, _, _ = run_workflow("terminate_mdp2p", [{"subscription_id": mdp2p_subscription}, {}])
+
+    assert_complete(result)
+    assert MultiDomainPoint2Point.from_subscription(mdp2p_subscription).status == SubscriptionLifecycle.TERMINATED
+
+
 def test_reconcile_mdp2p_syncs_state(mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch) -> None:
     # The aggregator reports the connection drifted to ACTIVATED (a missed provision callback).
     monkeypatch.setattr(aggregator_proxy, "get_reservation", lambda _cid: SimpleNamespace(status="ACTIVATED"))
