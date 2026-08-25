@@ -50,6 +50,11 @@ Both need the pgvector extension.
   anomalous, whereas an unsubscribed DDS entry is the normal state of every ANA peer's topology.
   Terminated reservations are excluded (their subscriptions are terminated too, so they are already
   outside `subscribed_values`), and a failed fetch aborts rather than diffing against nothing.
+  `settings.ignored_connection_ids` suppresses known orphans — the aggregator-proxy's list is closed
+  per *requester NSA*, not per client, so anything else talking to that proxy (a manual call, the
+  automation UI) also lands in it. The list applies to the reservation-without-subscription direction
+  only: a subscription whose reservation vanished is a different, more serious fault and must not be
+  silenced by an id that was once an accepted orphan.
 - `schedules.py` — this project's cron entries, registered through core's schedule API by the
   `scheduler load-project-schedule` command that `main.py` attaches to core's `scheduler` sub-app.
   It runs as its own scheduler init container, after the one that loops on `load-initial-schedule`

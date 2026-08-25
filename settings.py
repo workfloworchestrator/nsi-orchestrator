@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     requester_nsa: str = "urn:ogf:network:example.net:2026:nsa:nsi-orchestrator"
     provider_nsa: str = "urn:ogf:network:example.net:2026:nsa:safnari"
 
+    # Connection ids task_validate_aggregator_against_subscriptions must not report (JSON list).
+    ignored_connection_ids: list[str] = []
+
     # This orchestrator's own externally reachable base URL. The aggregator-proxy POSTs reservation
     # results back to <orchestrator_callback_base_url><callback_route>, so it must be an absolute
     # URL the proxy can reach. Override in every deployment.

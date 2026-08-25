@@ -22,6 +22,7 @@ from orchestrator.core.workflows import get_workflow
 from schedules import NSI_SCHEDULES
 from services import aggregator_proxy
 from services.aggregator_proxy import AggregatorProxyError, AggregatorReservation
+from settings import settings
 from tests.workflows import assert_complete, assert_failed, extract_error, extract_state, run_workflow
 
 TASK = "task_validate_aggregator_against_subscriptions"
@@ -113,3 +114,43 @@ def test_an_unreachable_aggregator_fails_without_reporting_drift(
     error = str(extract_error(result))
     assert "nothing was compared" in error
     assert "without a live reservation" not in error
+
+
+class TestIgnoredConnectionIds:
+    """The allow-list covers reservations that cannot be terminated."""
+
+    def test_an_ignored_orphan_is_not_reported(
+        self, mdp2p_subscription: str, reservations: list[AggregatorReservation], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ignored_connection_ids", ["conn-stuck"])
+        reservations.extend([_reservation("conn-1"), _reservation("conn-stuck")])
+
+        result, _, _ = run_workflow(TASK, [{}])
+
+        assert_complete(result)
+        assert extract_state(result)["ignored_reservations"] == ["conn-stuck"]
+
+    def test_other_orphans_are_still_reported(
+        self, mdp2p_subscription: str, reservations: list[AggregatorReservation], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ignored_connection_ids", ["conn-stuck"])
+        reservations.extend([_reservation("conn-1"), _reservation("conn-stuck"), _reservation("conn-new")])
+
+        result, _, _ = run_workflow(TASK, [{}])
+
+        assert_failed(result)
+        error = str(extract_error(result))
+        assert "conn-new" in error
+        assert "conn-stuck" not in error
+
+    def test_it_does_not_mask_a_subscription_whose_reservation_vanished(
+        self, mdp2p_subscription: str, reservations: list[AggregatorReservation], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Allow-listing an id must not hide the opposite, more serious fault for that same id."""
+        monkeypatch.setattr(settings, "ignored_connection_ids", ["conn-1"])
+        # reservations stays empty: the subscription's own connection is missing from the aggregator
+
+        result, _, _ = run_workflow(TASK, [{}])
+
+        assert_failed(result)
+        assert "subscriptions without a live reservation: ['conn-1']" in str(extract_error(result))

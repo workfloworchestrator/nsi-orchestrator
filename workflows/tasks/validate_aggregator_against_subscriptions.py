@@ -20,6 +20,7 @@ from pydantic_forms.types import State
 
 from services import aggregator_proxy
 from services.aggregator_proxy import AggregatorProxyError
+from settings import settings
 from workflows.mdp2p.shared.fsm import ConnectionState
 from workflows.shared import subscribed_values
 
@@ -37,7 +38,9 @@ def compare_reservations_to_subscriptions() -> State:
     # Terminated reservations are excluded: their subscriptions are terminated too.
     live = {r.connection_id for r in reservations if r.status != ConnectionState.TERMINATED}
     subscribed = subscribed_values("MultiDomainPoint2Point", "connection_id")
-    reservations_without_subscription = sorted(live - subscribed)
+    ignored = set(settings.ignored_connection_ids)
+    # Ignoring applies to this direction only; see CLAUDE.md.
+    reservations_without_subscription = sorted(live - subscribed - ignored)
     subscriptions_without_reservation = sorted(subscribed - live)
 
     if reservations_without_subscription or subscriptions_without_reservation:
@@ -47,8 +50,17 @@ def compare_reservations_to_subscriptions() -> State:
             f"  subscriptions without a live reservation: {subscriptions_without_reservation}"
         )
 
-    logger.info("aggregator matches subscriptions", reservations=len(live), subscriptions=len(subscribed))
-    return {"checked_reservations": len(live), "checked_subscriptions": len(subscribed)}
+    logger.info(
+        "aggregator matches subscriptions",
+        reservations=len(live),
+        subscriptions=len(subscribed),
+        ignored=len(live & ignored),
+    )
+    return {
+        "checked_reservations": len(live),
+        "checked_subscriptions": len(subscribed),
+        "ignored_reservations": sorted(live & ignored),
+    }
 
 
 # No run_predicate: see CLAUDE.md.
