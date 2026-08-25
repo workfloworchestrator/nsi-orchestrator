@@ -22,7 +22,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 
 [tool.setuptools]
-py-modules = ["auth", "log_filters", "main", "settings", "wsgi"]
+py-modules = ["auth", "log_filters", "main", "schedules", "settings", "wsgi"]
 
 [tool.setuptools.packages.find]
 include = ["products*", "workflows*", "services*"]
