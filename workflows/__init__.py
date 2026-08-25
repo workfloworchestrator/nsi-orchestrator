@@ -13,6 +13,11 @@
 
 from orchestrator.core.workflows import LazyWorkflowInstance
 
+LazyWorkflowInstance(
+    "workflows.tasks.validate_aggregator_against_subscriptions",
+    "task_validate_aggregator_against_subscriptions",
+)
+
 LazyWorkflowInstance("workflows.topology.create_topology", "create_topology")
 LazyWorkflowInstance("workflows.topology.modify_topology", "modify_topology")
 LazyWorkflowInstance("workflows.topology.terminate_topology", "terminate_topology")

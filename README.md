@@ -150,7 +150,9 @@ manage its lifecycle:
   already subscribed (so the topology link always resolves), and links the new subscription to that
   topology.
 - **Modify** — change the `switching_service_name` (`switching_service_id` is read-only).
-- **Validate** — assert the subscription's `switching_service_id` is still advertised by the DDS Proxy.
+- **Validate** — assert the subscription's `switching_service_id` is still advertised by the DDS Proxy
+  and that the DDS still places it under the linked topology (the editable `switching_service_name` is
+  deliberately not checked).
 - **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
 
 ## Service termination point product
@@ -164,9 +166,10 @@ bit/s. Five workflows manage its lifecycle:
 - **Create** — presents a dropdown of the STPs the DDS Proxy returns whose switching service is
   already subscribed; `capacity`, `label_group`, and the initial `stp_name` come straight from the DDS.
 - **Modify** — change the `stp_name` (the rest is DDS-derived and read-only).
-- **Validate** — assert the STP is still advertised by the DDS Proxy and that its stored `capacity`
-  and `label_group` still match the DDS; drift fails the validation and signals that a reconcile is
-  needed (the editable `stp_name` is deliberately not checked).
+- **Validate** — assert the STP is still advertised by the DDS Proxy and that its stored `capacity`,
+  `label_group` and parent switching service still match the DDS; drift fails the validation and
+  signals that a reconcile is needed (the editable `stp_name` is deliberately not checked). Reconcile
+  repairs `capacity` and `label_group`, but never re-parents an STP, so that drift needs an operator.
 - **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
 - **Reconcile** — re-read the STP from the DDS Proxy and update its DDS-derived `capacity` and
   `label_group` (VLAN range) if they changed; if the STP is no longer advertised the stored values
@@ -325,6 +328,26 @@ uv sync                                                   # install runtime + de
 createdb nsi && export DATABASE_URI=postgresql+psycopg://nsi:nsi@localhost/nsi
 uv run python main.py db upgrade heads                    # create the schema
 OAUTH2_ACTIVE=false uv run uvicorn wsgi:app --host 0.0.0.0 --port 8080  # run the API (auth off locally)
+```
+
+## Scheduled tasks
+
+Alongside the per-subscription validators, one system task runs on a schedule:
+
+- **`task_validate_aggregator_against_subscriptions`** (nightly) — compares the aggregator's live
+  reservations against the MDP2P subscriptions in both directions, reporting reservations with no
+  subscription and subscriptions with no live reservation. This is the direction the per-subscription
+  validator cannot see, since it starts from a subscription. If the aggregator cannot be read the
+  task fails without reporting drift, rather than flagging the whole estate.
+
+Core's own schedules (validate subscriptions, validate products, resume workflows, clean up tasks,
+awaiting-callback sweep) are loaded by `scheduler load-initial-schedule`; this project's live in
+`schedules.py` and are loaded by `scheduler load-project-schedule`. The chart's scheduler init
+container runs both. Both require Redis (`CACHE_URI`) and the singleton scheduler deployment.
+
+```shell
+uv run python main.py scheduler load-project-schedule   # register this project's schedules
+uv run python main.py scheduler show-schedule           # list what is registered
 ```
 
 `main.py` exposes the orchestrator-core CLI (`db`, `scheduler`, `generate`, …); `wsgi:app` is the

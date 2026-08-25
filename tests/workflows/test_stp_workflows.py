@@ -20,7 +20,7 @@ from orchestrator.core.types import SubscriptionLifecycle
 
 from products.product_types.stp import ServiceTerminationPoint
 from services import dds_proxy
-from tests.workflows import assert_complete, extract_state, product_id, run_workflow
+from tests.workflows import assert_complete, assert_failed, extract_error, extract_state, product_id, run_workflow
 
 
 def test_create_stp(switchingservice_subscription: str) -> None:
@@ -81,3 +81,26 @@ def test_reconcile_stp_syncs_dds_attributes(stp_subscriptions: dict[str, str], m
     stp = ServiceTerminationPoint.from_subscription(subscription_id).stp
     assert stp.capacity == 5000
     assert stp.label_group == "3000-3999"
+
+
+def test_validate_stp_detects_switching_service_drift(
+    stp_subscriptions: dict[str, str], dds: dict[str, list[dict[str, object]]]
+) -> None:
+    """The parent switching service is DDS-derived, so re-parenting is drift."""
+    dds["/service-termination-points"][0]["switchingServiceId"] = "urn:other-ss"
+
+    result, _, _ = run_workflow("validate_stp", [{"subscription_id": stp_subscriptions["urn:stp1"]}])
+
+    assert_failed(result)
+    assert "moved switching service" in str(extract_error(result))
+
+
+def test_validate_stp_ignores_a_renamed_subscription(stp_subscriptions: dict[str, str]) -> None:
+    """A renamed subscription is a deliberate local divergence, never a validation failure."""
+    subscription_id = stp_subscriptions["urn:stp1"]
+    modified, _, _ = run_workflow("modify_stp", [{"subscription_id": subscription_id}, {"stp_name": "Local label"}, {}])
+    assert_complete(modified)
+
+    result, _, _ = run_workflow("validate_stp", [{"subscription_id": subscription_id}])
+
+    assert_complete(result)

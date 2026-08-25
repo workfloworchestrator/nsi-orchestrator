@@ -18,7 +18,7 @@ from __future__ import annotations
 from orchestrator.core.types import SubscriptionLifecycle
 
 from products.product_types.switchingservice import SwitchingService
-from tests.workflows import assert_complete, extract_state, product_id, run_workflow
+from tests.workflows import assert_complete, assert_failed, extract_error, extract_state, product_id, run_workflow
 
 
 def test_create_switchingservice(topology_subscription: str) -> None:
@@ -61,3 +61,28 @@ def test_terminate_switchingservice(switchingservice_subscription: str) -> None:
 
     assert_complete(result)
     assert SwitchingService.from_subscription(switchingservice_subscription).status == SubscriptionLifecycle.TERMINATED
+
+
+def test_validate_switchingservice_detects_topology_drift(
+    switchingservice_subscription: str, dds: dict[str, list[dict[str, object]]]
+) -> None:
+    """The parent topology is DDS-derived, so re-homing the switching service is drift."""
+    dds["/switching-services"][0]["topologyId"] = "urn:other"
+
+    result, _, _ = run_workflow("validate_switchingservice", [{"subscription_id": switchingservice_subscription}])
+
+    assert_failed(result)
+    assert "moved topology" in str(extract_error(result))
+
+
+def test_validate_switchingservice_ignores_a_renamed_subscription(switchingservice_subscription: str) -> None:
+    """A renamed subscription is a deliberate local divergence, never a validation failure."""
+    modified, _, _ = run_workflow(
+        "modify_switchingservice",
+        [{"subscription_id": switchingservice_subscription}, {"switching_service_name": "Local label"}, {}],
+    )
+    assert_complete(modified)
+
+    result, _, _ = run_workflow("validate_switchingservice", [{"subscription_id": switchingservice_subscription}])
+
+    assert_complete(result)

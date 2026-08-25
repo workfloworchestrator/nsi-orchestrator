@@ -22,15 +22,21 @@ from services.dds_proxy import fetch_switching_services
 logger = structlog.get_logger(__name__)
 
 
-@step("Validate switching service is still present in the DDS")
+@step("Validate switching service against the DDS")
 def validate_switchingservice_present_in_dds(subscription: SwitchingService) -> State:
-    """Assert the subscription's switching_service_id is still advertised by the dds-proxy."""
+    """Assert the switching service is still advertised by the dds-proxy under the stored topology."""
     switching_service_id = subscription.switchingservice.switching_service_id
-    known_ids = {service.id for service in fetch_switching_services()}
-    if switching_service_id not in known_ids:
+    dds_service = next((service for service in fetch_switching_services() if service.id == switching_service_id), None)
+    if dds_service is None:
         raise AssertionError(
             f"Switching service {switching_service_id} is no longer present in the dds-proxy "
             "/switching-services endpoint"
+        )
+    stored_topology_id = subscription.switchingservice.topology.topology_id
+    if dds_service.topology_id != stored_topology_id:
+        raise AssertionError(
+            f"Switching service {switching_service_id} moved topology: stored {stored_topology_id}, "
+            f"DDS advertises {dds_service.topology_id}"
         )
 
     return {"subscription": subscription}

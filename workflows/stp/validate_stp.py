@@ -24,11 +24,7 @@ logger = structlog.get_logger(__name__)
 
 @step("Validate service termination point against the DDS")
 def validate_stp_present_in_dds(subscription: ServiceTerminationPoint) -> State:
-    """Assert the STP is still advertised by the dds-proxy with the stored capacity and VLAN range.
-
-    capacity and label_group are DDS-derived; drift means a reconcile is needed (reconcile_stp repairs
-    them). stp_name is operator-editable via modify, so it is deliberately not validated.
-    """
+    """Assert the STP is still advertised by the dds-proxy with the stored capacity, VLAN range and parent."""
     stp_id = subscription.stp.stp_id
     dds_stp = next((stp for stp in fetch_service_termination_points() if stp.id == stp_id), None)
     if dds_stp is None:
@@ -45,6 +41,12 @@ def validate_stp_present_in_dds(subscription: ServiceTerminationPoint) -> State:
         raise AssertionError(
             f"Service termination point {stp_id} VLAN range drifted: stored {subscription.stp.label_group}, "
             f"DDS advertises {dds_stp.label_group}; reconcile to repair"
+        )
+    stored_switching_service_id = subscription.stp.switching_service.switching_service_id
+    if dds_stp.switching_service_id != stored_switching_service_id:
+        raise AssertionError(
+            f"Service termination point {stp_id} moved switching service: stored "
+            f"{stored_switching_service_id}, DDS advertises {dds_stp.switching_service_id}"
         )
 
     return {"subscription": subscription}
