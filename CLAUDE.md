@@ -52,11 +52,14 @@ Both need the pgvector extension.
   outside `subscribed_values`), and a failed fetch aborts rather than diffing against nothing.
 - `schedules.py` — this project's cron entries, registered through core's schedule API by the
   `scheduler load-project-schedule` command that `main.py` attaches to core's `scheduler` sub-app.
-  The chart's init container runs it after `load-initial-schedule`, chained with `&&` inside the same
-  `until` loop so a failure in either retries the pair while waiting for the DB and Redis. It must run
-  from that singleton and not the multi-replica API app: `add_unique_scheduled_task_to_queue` is not
-  safe for concurrent use. Times are staggered off core's 00:10 / 02:30 and off the `:00`/`:30` marks.
-  This is **not** the deprecated `@scheduler` decorator; it drives the same API the UI does.
+  It runs as its own scheduler init container, after the one that loops on `load-initial-schedule`
+  until the DB and Redis are up. Deliberately not chained into that loop: only the first command
+  needs the wait, so the second fails fast and a permanent failure — an unregistered workflow name,
+  an unrun migration — crashloops naming the cause rather than printing `waiting for db/redis...`
+  forever. It must run from that singleton and not the multi-replica API app:
+  `add_unique_scheduled_task_to_queue` is not safe for concurrent use. Times are staggered off core's
+  00:10 / 02:30 and off the `:00`/`:30` marks. This is **not** the deprecated `@scheduler` decorator;
+  it drives the same API the UI does.
 - `workflows/shared.py` — cross-product form helpers: `create_summary_form`/`modify_summary_form`,
   `subscription_id_for_value`, `raise_form_validation_error`, and `fetch_for_form` (wraps a proxy
   fetch so a proxy error surfaces as a `FormValidationError` instead of a crashed step).
