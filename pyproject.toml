@@ -5,7 +5,7 @@ description = "NSI WFO implentation"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "httpx2==2.10.0",
+    "httpx2==2.12.0",
     "oauth2-lib==3.0.1",
     "orchestrator-core==5.3.0",
     "pydantic-settings==2.15.0",
@@ -35,9 +35,9 @@ constraint-dependencies = ["litellm<1.92"]
 
 [dependency-groups]
 dev = [
-    "mypy==2.3.0",
+    "mypy==2.3.1",
     "pytest==9.1.1",
-    "ruff==0.16.2",
+    "ruff==0.16.3",
 ]
 
 [tool.pytest.ini_options]
