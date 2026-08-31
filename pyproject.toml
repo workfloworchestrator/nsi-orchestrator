@@ -37,7 +37,7 @@ constraint-dependencies = ["litellm<1.92"]
 dev = [
     "mypy==2.3.1",
     "pytest==9.1.1",
-    "ruff==0.16.3",
+    "ruff==0.16.4",
 ]
 
 [tool.pytest.ini_options]
