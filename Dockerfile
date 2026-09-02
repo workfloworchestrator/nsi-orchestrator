@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 #
 # Build stage
-FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:1ca89db2db38f5f456492753167f867ee88fc98e595eda47dc3adb21447de18e AS build
+FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:49bbffe3b58806f1862e924a0efc9e916d8aab12f7434aaae5dcefbc3486e1eb AS build
 ARG VERSION
 ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NSI_ORCHESTRATOR=${VERSION}
 WORKDIR /app
@@ -13,7 +13,7 @@ RUN uv build --no-cache --wheel --out-dir dist \
     && uv export --frozen --no-dev --no-emit-project --no-hashes -o dist/requirements.txt
 
 # Final stage
-FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:1ca89db2db38f5f456492753167f867ee88fc98e595eda47dc3adb21447de18e
+FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:49bbffe3b58806f1862e924a0efc9e916d8aab12f7434aaae5dcefbc3486e1eb
 COPY --from=build /app/dist/*.whl /app/dist/requirements.txt /tmp/
 # Dependencies come from the exported lock; a fresh resolve picks up releases without a musl wheel.
 RUN uv pip install --system --no-cache -r /tmp/requirements.txt \
