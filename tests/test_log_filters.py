@@ -19,7 +19,7 @@ import logging
 
 import pytest
 
-from log_filters import HealthCheckAccessFilter
+from log_filters import HealthCheckAccessFilter, WebsocketCloseRaceFilter
 
 
 def _access_record(path: str) -> logging.LogRecord:
@@ -60,3 +60,39 @@ def test_health_check_filter_keeps_non_access_records() -> None:
         exc_info=None,
     )
     assert HealthCheckAccessFilter().filter(record) is True
+
+
+def _asgi_error_record(exc: BaseException | None) -> logging.LogRecord:
+    """A uvicorn.error record for an exception escaping the ASGI application."""
+    return logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=0,
+        msg="Exception in ASGI application\n",
+        args=None,
+        exc_info=(type(exc), exc, None) if exc else None,
+    )
+
+
+def test_websocket_close_race_downgraded_without_traceback() -> None:
+    record = _asgi_error_record(RuntimeError('Cannot call "send" once a close message has been sent.'))
+    assert WebsocketCloseRaceFilter().filter(record) is True
+    assert record.exc_info is None
+    assert record.levelname == "INFO"
+    assert record.getMessage() == "Websocket client disconnected before close completed"
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        pytest.param(RuntimeError("Something else entirely"), id="other-runtime-error"),
+        pytest.param(ValueError("once a close message has been sent"), id="other-exception-type"),
+        pytest.param(None, id="no-exception"),
+    ],
+)
+def test_websocket_close_race_leaves_other_errors_alone(exc: BaseException | None) -> None:
+    record = _asgi_error_record(exc)
+    assert WebsocketCloseRaceFilter().filter(record) is True
+    assert record.levelname == "ERROR"
+    assert (record.exc_info is None) == (exc is None)

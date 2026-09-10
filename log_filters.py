@@ -19,6 +19,9 @@ import logging
 # (client, method, path_with_query, http_version, status), so args[2] is the request path.
 _HEALTH_PATH = "/api/health"
 
+# Part of the message starlette's WebSocket.send() raises on an already closed connection.
+_WEBSOCKET_ALREADY_CLOSED = "once a close message has been sent"
+
 
 class HealthCheckAccessFilter(logging.Filter):
     """Drop the uvicorn access line for the k8s health probe (any status), keep every other request.
@@ -32,3 +35,22 @@ class HealthCheckAccessFilter(logging.Filter):
         if not (isinstance(args, tuple) and len(args) >= 3):
             return True
         return str(args[2]).split("?", 1)[0].rstrip("/") != _HEALTH_PATH
+
+
+class WebsocketCloseRaceFilter(logging.Filter):
+    """Replace the ASGI traceback for a websocket closed twice with a single info line.
+
+    When a client drops an /api/ws/events connection, orchestrator-core's MemoryWebsocketManager
+    closes a socket starlette has already closed; starlette raises RuntimeError and uvicorn logs a
+    full traceback. The connection is gone either way, so log that and drop the stack trace.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        if not isinstance(exc, RuntimeError) or _WEBSOCKET_ALREADY_CLOSED not in str(exc):
+            return True
+        record.msg = "Websocket client disconnected before close completed"
+        record.args = None
+        record.exc_info = None
+        record.levelno, record.levelname = logging.INFO, "INFO"
+        return True
