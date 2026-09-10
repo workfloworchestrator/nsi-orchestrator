@@ -37,7 +37,7 @@ class ServiceAccessPointBlockProvisioning(
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"{self.stp.stp_name} VLAN {self.vlan}"
+        return f"SAP {self.stp.stp_name} VLAN {self.vlan}"
 
 
 class ServiceAccessPointBlock(ServiceAccessPointBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):

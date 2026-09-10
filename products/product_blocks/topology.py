@@ -29,7 +29,7 @@ class TopologyBlockProvisioning(TopologyBlockInactive, lifecycle=[SubscriptionLi
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return self.topology_name
+        return f"TOPOLOGY {self.topology_name}"
 
 
 class TopologyBlock(TopologyBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):

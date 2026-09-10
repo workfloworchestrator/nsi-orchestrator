@@ -39,31 +39,31 @@ from products.product_blocks.vc import VirtualCircuitBlockProvisioning
         pytest.param(
             TopologyBlockProvisioning,
             SimpleNamespace(topology_name="Development topology west"),
-            "Development topology west",
+            "TOPOLOGY Development topology west",
             id="topology",
         ),
         pytest.param(
             SwitchingServiceBlockProvisioning,
             SimpleNamespace(switching_service_name="Core SS"),
-            "Core SS",
+            "SWITCH Core SS",
             id="switchingservice",
         ),
         pytest.param(
             ServiceTerminationPointBlockProvisioning,
             SimpleNamespace(stp_name="Port X"),
-            "Port X",
+            "STP Port X",
             id="stp",
         ),
         pytest.param(
             ServiceAccessPointBlockProvisioning,
             SimpleNamespace(stp=SimpleNamespace(stp_name="Port X"), vlan="1779"),
-            "Port X VLAN 1779",
+            "SAP Port X VLAN 1779",
             id="sap",
         ),
         pytest.param(
             ServiceDemarcationPointBlockProvisioning,
             SimpleNamespace(sdp_name="Amsterdam to Geneva"),
-            "Amsterdam to Geneva",
+            "SDP Amsterdam to Geneva",
             id="sdp",
         ),
         pytest.param(
@@ -78,7 +78,7 @@ from products.product_blocks.vc import VirtualCircuitBlockProvisioning
         pytest.param(
             VirtualCircuitBlockProvisioning,
             SimpleNamespace(circuit_description="Amsterdam to Geneva"),
-            "Amsterdam to Geneva",
+            "VC Amsterdam to Geneva",
             id="vc",
         ),
     ],

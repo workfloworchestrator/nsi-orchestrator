@@ -56,7 +56,7 @@ class VirtualCircuitBlockProvisioning(VirtualCircuitBlockInactive, lifecycle=[Su
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return self.circuit_description
+        return f"VC {self.circuit_description}"
 
 
 class VirtualCircuitBlock(VirtualCircuitBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
