@@ -28,7 +28,7 @@ from strawberry.extensions import AddValidationRules
 import products  # noqa: F401  Registers subscription models in SUBSCRIPTION_MODEL_REGISTRY
 import workflows  # noqa: F401  Registers the topology workflow instances
 from auth import GroupGate, GroupGateGraphql, NamedEmailUserModel, UserinfoOIDCAuth
-from log_filters import HealthCheckAccessFilter
+from log_filters import HealthCheckAccessFilter, WebsocketCloseRaceFilter
 from settings import settings, use_psycopg_driver
 
 # Fail fast rather than boot silently open. orchestrator-core's GraphQL layer skips the
@@ -57,6 +57,7 @@ app = OrchestratorCore(base_settings=app_settings, **docs)
 # OrchestratorCore ran initialise_logging above; add the filter afterwards so it survives. The health
 # probe fires every few seconds and would otherwise dominate the access log.
 logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
+logging.getLogger("uvicorn.error").addFilter(WebsocketCloseRaceFilter())
 
 structlog.get_logger(__name__).info("Starting nsi-orchestrator", version=importlib.metadata.version("nsi-orchestrator"))
 
