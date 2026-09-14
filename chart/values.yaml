@@ -60,6 +60,17 @@ service:
   port: 80
   targetPort: 8080
 
+# -- Issue the TLS certificate for this service with cert-manager
+certificate:
+  enabled: false
+  name: chart-example-tls
+  dnsName: example.domain.toplevel
+  issuerRef:
+    name: letsencrypt
+  secretName: chart-example-tls
+  privateKey:
+    rotationPolicy: Always
+
 ingress:
   enabled: false
   className: ""
