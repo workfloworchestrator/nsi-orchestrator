@@ -47,6 +47,7 @@
         "reconcile_stp": "Reconcile service termination point",
         "release_mdp2p": "Release multi domain point to point",
         "retry_reservation": "Retry reservation with corrected input",
+        "task_validate_aggregator_against_subscriptions": "Validate aggregator against subscriptions",
         "terminate_mdp2p": "Terminate multi domain point to point",
         "terminate_sdp": "Terminate service demarcation point",
         "terminate_stp": "Terminate service termination point",
