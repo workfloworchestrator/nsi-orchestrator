@@ -118,6 +118,11 @@ Both need the pgvector extension.
   `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NSI_ORCHESTRATOR`. Omitting it fails the build by design. `uv.lock`
   records the project as `(dynamic)` and so does not churn per commit. See README **Versioning**.
 
+- **The dependency cooldown is set twice.** `exclude-newer = "8 days"` in `pyproject.toml` and
+  `minimumReleaseAge` in `.github/renovate.json` must stay equal. uv enforces it on indirect
+  dependencies, which Renovate cannot. An urgent fix younger than that needs a temporary
+  `exclude-newer-package = { <pkg> = false }`.
+
 - **Register a system task with `create_task`, not `create_workflow`.** It belongs to no product, so
   it must not be linked into `products_workflows`. `create_task` inserts `target='SYSTEM'` and
   `is_task=TRUE` itself, and requires a `description` (`workflows.description` is `NOT NULL`).
