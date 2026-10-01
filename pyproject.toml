@@ -32,6 +32,8 @@ package = true
 # litellm 1.92+ ships only manylinux and win_amd64 wheels; on musl and macOS it falls back to an
 # sdist that needs a Rust toolchain.
 constraint-dependencies = ["litellm<1.92"]
+# Skip releases younger than 8 days; keep in sync with minimumReleaseAge in .github/renovate.json.
+exclude-newer = "8 days"
 
 [dependency-groups]
 dev = [
