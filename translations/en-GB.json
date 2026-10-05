@@ -10,7 +10,7 @@
             "exclude_sdps": "SDPs to exclude from the path",
             "exclude_sdps_info": "(not yet supported by the aggregator; leave empty)",
             "include_sdps": "SDPs to include in the path",
-            "include_sdps_info": "In path order, from the source towards the destination",
+            "include_sdps_info": "In path order, from the source towards the destination; the next page asks for an optional VLAN on each",
             "label_group": "Label group",
             "path": "Path",
             "sdp_name": "Service demarcation point name",
