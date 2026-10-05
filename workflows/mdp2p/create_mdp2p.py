@@ -30,6 +30,7 @@ from settings import settings
 from workflows.mdp2p.shared.forms import (
     CONNECTION_SUMMARY_FIELDS,
     connection_form,
+    fetch_vlans_in_use,
     path_summary,
     sdp_block_for,
     sdp_topology,
@@ -44,11 +45,12 @@ logger = structlog.get_logger(__name__)
 
 def initial_input_form_generator(product_name: str) -> FormGenerator:
     topology = sdp_topology()
+    in_use_by_stp = fetch_vlans_in_use()
 
-    user_input = yield connection_form(product_name, topology)
+    user_input = yield connection_form(product_name, topology, in_use_by_stp)
     user_input_dict: State = user_input.model_dump()
     include_sdps = [str(sdp_id) for sdp_id in user_input_dict["include_sdps"]]
-    sdp_vlans = yield from sdp_vlan_input(topology, include_sdps)
+    sdp_vlans = yield from sdp_vlan_input(topology, include_sdps, in_use_by_stp)
 
     summary_input = user_input_dict | {"path": path_summary(topology, include_sdps, sdp_vlans)}
     yield from create_summary_form(summary_input, product_name, CONNECTION_SUMMARY_FIELDS)

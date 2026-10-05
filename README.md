@@ -245,7 +245,10 @@ domain — so `workflows/mdp2p/shared/ero.py` searches the SDP topology for a ro
 re-enters a network and takes the source-facing end of each SDP from it.
 
 **Each included SDP can carry a VLAN.** When SDPs are included, a second form page asks for an
-optional VLAN per SDP, validated against the VLANs both ends of the SDP advertise. A VLAN is sent as
+optional VLAN per SDP. It must be one both ends of the SDP advertise and that neither end has in use.
+In-use VLANs come from the aggregator's reservations with their path segments (`GET
+/reservations?detail=full`), so they cover only this orchestrator's own connections: a VLAN another
+requester holds on the SDP still fails at reserve time. A VLAN is sent as
 `?vlan=<n>` on that SDP's ERO STP and stored on the `SdpConstraint` block; retry prefills it by SDP.
 Leave it empty to let the PCE choose. Pin it when the VLAN on the SDP matters: keeping the VLANs of an
 existing circuit when migrating it, or when the next domain cannot swap labels. In the second case the

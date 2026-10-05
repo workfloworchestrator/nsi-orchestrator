@@ -43,6 +43,7 @@ from workflows.mdp2p.create_mdp2p import process_reservation_result, reserve_con
 from workflows.mdp2p.shared.forms import (
     CONNECTION_SUMMARY_FIELDS,
     connection_form,
+    fetch_vlans_in_use,
     path_summary,
     sdp_block_for,
     sdp_topology,
@@ -69,10 +70,14 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
 
     source, destination = vc.saps
     topology = sdp_topology()
+    # This subscription's own failed reservation holds its VLANs, on the endpoints and the SDPs, until
+    # the terminate step runs; leave it out or the user cannot keep the VLANs they already had.
+    in_use_by_stp = fetch_vlans_in_use(released_connection_id=vc.connection_id)
     included = [constraint for constraint in vc.sdp_constraints if constraint.constraint_type == ConstraintType.INCLUDE]
     form = connection_form(
         "Retry reservation",
         topology,
+        in_use_by_stp,
         defaults={
             "circuit_description": vc.circuit_description,
             "service_speed": vc.service_speed,
@@ -82,9 +87,6 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
             "destination_vlan": int(destination.vlan),
             "include_sdps": [str(constraint.sdp.owner_subscription_id) for constraint in included],
         },
-        # This subscription's own failed reservation holds its VLANs until the terminate step runs,
-        # so release them here or the user cannot keep the VLAN they already had.
-        released_vlans={int(source.vlan), int(destination.vlan)},
     )
 
     user_input = yield form
@@ -96,7 +98,7 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
         for constraint in included
         if constraint.vlan is not None
     }
-    sdp_vlans = yield from sdp_vlan_input(topology, include_sdps, stored_vlans)
+    sdp_vlans = yield from sdp_vlan_input(topology, include_sdps, in_use_by_stp, stored_vlans)
 
     summary_input = user_input_dict | {"path": path_summary(topology, include_sdps, sdp_vlans)}
     # A single column, not modify_summary_form's before/after: these are not VC attributes, and the

@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 from orchestrator.core.types import SubscriptionLifecycle
+from pydantic_forms.exceptions import FormValidationError
 
 from products.product_types.mdp2p import MultiDomainPoint2Point
 from services import aggregator_proxy
@@ -33,6 +34,7 @@ from tests.workflows import (
 )
 from tests.workflows.conftest import MDP2P_CREATE_FORM as _CREATE_FORM
 from tests.workflows.conftest import PATH_STPS
+from workflows.mdp2p.shared import forms
 
 
 def test_create_mdp2p(stp_subscriptions: dict[str, str], sdp_subscription: str, aggregator: None) -> None:
@@ -176,19 +178,69 @@ def test_retry_reservation_prefills_sdp_vlans_by_sdp(
     result, _ = resume_callback(process, step_log, {"status": "FAILED", "connectionId": "conn-1"})
     subscription_id = str(extract_state(result)["subscription_id"])
 
+    # The failed connection still holds its VLANs, on the endpoints and on the SDP, until retry
+    # terminates it; retry must leave it out so they can be kept.
+    failed = _held_reservation("conn-1", "FAILED", 1001, 1002, [(PATH_STPS["b_to_c"], PATH_STPS["c_to_b"], 1600)])
+    monkeypatch.setattr(forms, "list_reservations", lambda **_kwargs: [failed])
+
     generator = retry_reservation.initial_input_form_generator(subscription_id)
     connection_form = next(generator)
     vlan_form = generator.send(connection_form(**(form | {"include_sdps": [sdp_bc]})))
 
     # B <-> C is now first, and keeps the VLAN it was pinned to as the second SDP.
     assert vlan_form.model_json_schema()["properties"]["sdp_vlan_1"]["default"] == 1600
+    assert vlan_form(sdp_vlan_1=1600) is not None
+
+
+def test_create_mdp2p_rejects_a_vlan_in_use_on_an_included_sdp(
+    path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A VLAN another of our reservations holds on the SDP is refused before the workflow starts."""
+    held = _held_reservation("other", "RESERVED", 1100, 1200, [(PATH_STPS["a_to_b"], PATH_STPS["b_to_a"], 1500)])
+    monkeypatch.setattr(forms, "list_reservations", lambda **_kwargs: [held])
+    form = _CREATE_FORM | {
+        "source_stp": PATH_STPS["source"],
+        "source_vlan": 1001,
+        "destination_stp": PATH_STPS["destination"],
+        "destination_vlan": 1002,
+        "allow_stps_in_sdp": False,
+        "include_sdps": [path_subscriptions["A <-> B"]],
+    }
+
+    with pytest.raises(FormValidationError, match="already in use on the SDP"):
+        run_workflow(
+            "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {"sdp_vlan_1": 1500}, {}]
+        )
+
+
+def _held_reservation(
+    connection_id: str, status: str, source_vlan: int, dest_vlan: int, sdps: list[tuple[str, str, int]]
+) -> AggregatorReservation:
+    """A reservation between the path's edges whose segments cross ``sdps`` (near end, far end, VLAN)."""
+    segments = [
+        {"order": order, "sourceSTP": f"{near}?vlan={vlan}", "destSTP": f"{far}?vlan={vlan}"}
+        for order, (near, far, vlan) in enumerate(sdps)
+    ]
+    return AggregatorReservation.model_validate(
+        {
+            "connectionId": connection_id,
+            "description": "d",
+            "status": status,
+            "criteria": {
+                "p2ps": {
+                    "capacity": 1000,
+                    "sourceSTP": f"{PATH_STPS['source']}?vlan={source_vlan}",
+                    "destSTP": f"{PATH_STPS['destination']}?vlan={dest_vlan}",
+                }
+            },
+            "segments": segments,
+        }
+    )
 
 
 @pytest.mark.parametrize("state", ["RESERVED", "ACTIVATED"])
 def test_retry_reservation_refuses_a_live_connection(mdp2p_subscription: str, state: str) -> None:
     """Retrying tears the connection down, so it must be unreachable while one is actually held."""
-    from pydantic_forms.exceptions import FormValidationError
-
     from workflows.mdp2p import retry_reservation
 
     subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)

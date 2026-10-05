@@ -171,6 +171,15 @@ Both need the pgvector extension.
   `sdp_vlan_<n>` positional fields built with `create_model`, stored on `SdpConstraint.vlan`) pins
   it. The fields carry their SDP name as schema `title`, so don't add `sdp_vlan_*` translations:
   the UI prefers a translation over the title.
+- **In-use VLANs are fetched once per form generator and shared by its pages.** `fetch_vlans_in_use`
+  runs at the top of the create/retry generator and its result is passed to `connection_form` and
+  `sdp_vlan_input`. pydantic-forms replays the generator from the start on every page submit, so a
+  fetch per page would multiply the aggregator calls, and each list costs the proxy one
+  `queryNotificationSync` per live reservation. The list asks for `detail=full` because the SDP
+  VLANs are only in the child segments; that costs the proxy no extra NSI call. Retry passes its own
+  `connection_id` as `released_connection_id`: the failed reservation holds its VLANs until the
+  terminate step, and the user must be able to keep them. Only this requester's reservations are
+  visible, so "free" means free as far as this orchestrator can see.
 - **The ERO only has any effect under the `sequential` or `tree` PCE algorithm.** `chainPCE` is
   `reachabilityPCE` alone, which copies the ERO to every child segment without computing against it.
   nsi-safnari defaults to `chain`; the ANA deployment runs `SEQUENTIAL`.
