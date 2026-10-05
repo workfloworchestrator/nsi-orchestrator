@@ -165,6 +165,12 @@ Both need the pgvector extension.
   and hairpins through the far domain — which is why `ero.py` searches for a route that never
   re-enters a network instead of picking by hop count. Selection order is path order and is never
   reordered.
+- **An ERO STP without `?vlan=` lets the PCE pick the SDP's VLAN at random**, per leg, without
+  regard to the legs after it. Into a `labelSwapping="false"` domain that can force a loop out and
+  back in to swap labels, which uPAs refuse. The optional per-SDP VLAN (second create/retry page,
+  `sdp_vlan_<n>` positional fields built with `create_model`, stored on `SdpConstraint.vlan`) pins
+  it. The fields carry their SDP name as schema `title`, so don't add `sdp_vlan_*` translations:
+  the UI prefers a translation over the title.
 - **The ERO only has any effect under the `sequential` or `tree` PCE algorithm.** `chainPCE` is
   `reachabilityPCE` alone, which copies the ERO to every child segment without computing against it.
   nsi-safnari defaults to `chain`; the ANA deployment runs `SEQUENTIAL`.

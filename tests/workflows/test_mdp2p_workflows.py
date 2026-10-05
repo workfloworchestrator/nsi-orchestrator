@@ -51,10 +51,27 @@ def test_create_mdp2p(stp_subscriptions: dict[str, str], sdp_subscription: str, 
     assert {sap.stp.stp_id for sap in subscription.vc.saps} == {"urn:stp1", "urn:stp2"}
 
 
+@pytest.mark.parametrize(
+    ("vlan_page", "stored_vlans", "expected_ero"),
+    [
+        pytest.param({}, [None, None], [PATH_STPS["a_to_b"], PATH_STPS["b_to_c"]], id="pce-chooses"),
+        pytest.param(
+            {"sdp_vlan_1": 1500},
+            [1500, None],
+            [f"{PATH_STPS['a_to_b']}?vlan=1500", PATH_STPS["b_to_c"]],
+            id="first-sdp-pinned",
+        ),
+    ],
+)
 def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
-    path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
+    path_subscriptions: dict[str, str],
+    aggregator: None,
+    monkeypatch: pytest.MonkeyPatch,
+    vlan_page: dict[str, int],
+    stored_vlans: list[int | None],
+    expected_ero: list[str],
 ) -> None:
-    """The user's SDP order must survive the DB round trip and reach the aggregator as an ERO."""
+    """The user's SDP order and VLANs must survive the DB round trip and reach the aggregator as an ERO."""
     captured: dict = {}
 
     def fake_reserve(**kwargs: object) -> str:
@@ -72,7 +89,7 @@ def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
         "include_sdps": [path_subscriptions["A <-> B"], path_subscriptions["B <-> C"]],
     }
     result, process, step_log = run_workflow(
-        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {}]
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, vlan_page, {}]
     )
     assert_awaiting_callback(result)
     result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-1"})
@@ -82,9 +99,10 @@ def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
     constraints = subscription.vc.sdp_constraints
     assert [constraint.sdp.sdp_name for constraint in constraints] == ["A <-> B", "B <-> C"]
     assert {constraint.constraint_type for constraint in constraints} == {"INCLUDE"}
+    assert [constraint.vlan for constraint in constraints] == stored_vlans
 
     # One STP per SDP, each the end facing the source, in the order the user chose.
-    assert captured["ero"] == [PATH_STPS["a_to_b"], PATH_STPS["b_to_c"]]
+    assert captured["ero"] == expected_ero
 
 
 @pytest.fixture
@@ -135,6 +153,35 @@ def test_retry_reservation_terminates_the_old_connection_and_reserves_again(
     assert after.service_speed == 2000
     # A fresh id, or the proxy would dedup on the old one and ignore every correction.
     assert after.global_reservation_id != before.global_reservation_id
+
+
+def test_retry_reservation_prefills_sdp_vlans_by_sdp(
+    path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A VLAN pinned on create follows its SDP into the retry form, even when the order changes."""
+    from workflows.mdp2p import retry_reservation
+
+    sdp_ab, sdp_bc = path_subscriptions["A <-> B"], path_subscriptions["B <-> C"]
+    form = _CREATE_FORM | {
+        "source_stp": PATH_STPS["source"],
+        "destination_stp": PATH_STPS["destination"],
+        "source_vlan": 1001,
+        "destination_vlan": 1002,
+        "allow_stps_in_sdp": False,
+        "include_sdps": [sdp_ab, sdp_bc],
+    }
+    result, process, step_log = run_workflow(
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {"sdp_vlan_2": 1600}, {}]
+    )
+    result, _ = resume_callback(process, step_log, {"status": "FAILED", "connectionId": "conn-1"})
+    subscription_id = str(extract_state(result)["subscription_id"])
+
+    generator = retry_reservation.initial_input_form_generator(subscription_id)
+    connection_form = next(generator)
+    vlan_form = generator.send(connection_form(**(form | {"include_sdps": [sdp_bc]})))
+
+    # B <-> C is now first, and keeps the VLAN it was pinned to as the second SDP.
+    assert vlan_form.model_json_schema()["properties"]["sdp_vlan_1"]["default"] == 1600
 
 
 @pytest.mark.parametrize("state", ["RESERVED", "ACTIVATED"])

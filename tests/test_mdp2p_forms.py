@@ -137,10 +137,12 @@ _C = "urn:ogf:network:c.example.net:2025:topology"
 _SDP_AB = "11111111-1111-1111-1111-111111111111"
 _SDP_BC = "22222222-2222-2222-2222-222222222222"
 
-# A three-domain chain A <-> B <-> C, with an SDP subscription for each hop.
+# A three-domain chain A <-> B <-> C, with an SDP subscription for each hop. The ends of A <-> B
+# advertise overlapping but different ranges, so only 1500-1999 is usable on that SDP.
 _PATH_TOPOLOGY = forms.SdpTopology(
     names={_SDP_AB: "A <-> B", _SDP_BC: "B <-> C"},
     stps={_SDP_AB: (f"{_A}:to-b", f"{_B}:to-a"), _SDP_BC: (f"{_B}:to-c", f"{_C}:to-b")},
+    label_groups={_SDP_AB: ("1000-1999", "1500-2500"), _SDP_BC: ("2000-2999", "2000-2999")},
 )
 _EDGE_STPS = [
     SimpleNamespace(stp_id=f"{_A}:customer", stp_name="A edge", label_group="1000-1999"),
@@ -230,3 +232,84 @@ def test_vlans_in_use_by_stp_holds_failed_but_releases_terminated() -> None:
         in_use = vlans_in_use_by_stp()
 
     assert in_use == {"urn:a": {1500, 1600}, "urn:b": {2500, 2600}}
+
+
+@pytest.mark.parametrize(
+    ("sdp_id", "expected"),
+    [
+        pytest.param(_SDP_AB, "1500-1999", id="overlap-of-different-ranges"),
+        pytest.param(_SDP_BC, "2000-2999", id="identical-ranges"),
+    ],
+)
+def test_common_vlans_is_what_both_ends_allow(sdp_id: str, expected: str) -> None:
+    assert _PATH_TOPOLOGY.common_vlans(sdp_id) == expected
+
+
+@pytest.mark.parametrize(
+    ("sdp_vlans", "expected"),
+    [
+        pytest.param(None, [f"{_A}:to-b", f"{_B}:to-c"], id="no-vlans-leaves-the-choice-to-the-pce"),
+        pytest.param([None, None], [f"{_A}:to-b", f"{_B}:to-c"], id="all-empty"),
+        pytest.param([1700, None], [f"{_A}:to-b?vlan=1700", f"{_B}:to-c"], id="first-pinned"),
+        pytest.param([1700, 2100], [f"{_A}:to-b?vlan=1700", f"{_B}:to-c?vlan=2100"], id="both-pinned"),
+    ],
+)
+def test_ero_pins_the_vlan_on_the_source_facing_stp(sdp_vlans: list[int | None] | None, expected: list[str]) -> None:
+    source, destination = f"{_A}:customer", f"{_C}:customer"
+    assert _PATH_TOPOLOGY.ero(source, destination, [_SDP_AB, _SDP_BC], sdp_vlans) == expected
+
+
+@pytest.mark.parametrize(
+    ("sdp_vlans", "expected"),
+    [
+        pytest.param(None, "A <-> B, B <-> C", id="no-vlans"),
+        pytest.param([1700, None], "A <-> B (VLAN 1700), B <-> C", id="one-pinned"),
+    ],
+)
+def test_path_summary_shows_pinned_vlans(sdp_vlans: list[int | None] | None, expected: str) -> None:
+    assert forms.path_summary(_PATH_TOPOLOGY, [_SDP_AB, _SDP_BC], sdp_vlans) == expected
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        pytest.param({}, None, id="all-optional"),
+        pytest.param({"sdp_vlan_1": 1500, "sdp_vlan_2": 2999}, None, id="range-boundaries"),
+        pytest.param({"sdp_vlan_1": 1200}, r"both ends of the SDP allow \(1500-1999\)", id="only-one-end-allows-it"),
+        pytest.param({"sdp_vlan_2": 1999}, r"both ends of the SDP allow \(2000-2999\)", id="outside-both-ends"),
+        pytest.param({"sdp_vlan_1": 4095}, "less than or equal to 4094", id="not-a-vlan"),
+    ],
+)
+def test_sdp_vlan_form_validates_against_the_sdp(values: dict, message: str | None) -> None:
+    form = forms.sdp_vlan_form(_PATH_TOPOLOGY, [_SDP_AB, _SDP_BC], {})
+    if message is None:
+        assert form(**values) is not None
+    else:
+        with pytest.raises(ValueError, match=message):
+            form(**values)
+
+
+def test_sdp_vlan_form_titles_each_field_with_its_sdp_and_prefills_by_sdp() -> None:
+    # Path order B <-> C then A <-> B: the prefill must follow the SDP, not the position.
+    form = forms.sdp_vlan_form(_PATH_TOPOLOGY, [_SDP_BC, _SDP_AB], {_SDP_AB: 1700})
+    properties = form.model_json_schema()["properties"]
+
+    assert properties["sdp_vlan_1"]["title"] == "VLAN on B <-> C"
+    assert properties["sdp_vlan_1"]["default"] is None
+    assert properties["sdp_vlan_2"]["title"] == "VLAN on A <-> B"
+    assert properties["sdp_vlan_2"]["default"] == 1700
+
+
+def test_sdp_vlan_input_skips_the_page_without_included_sdps() -> None:
+    generator = forms.sdp_vlan_input(_PATH_TOPOLOGY, [])
+    with pytest.raises(StopIteration) as stop:
+        next(generator)
+    assert stop.value.value == []
+
+
+def test_sdp_vlan_input_returns_the_vlans_in_path_order() -> None:
+    generator = forms.sdp_vlan_input(_PATH_TOPOLOGY, [_SDP_AB, _SDP_BC])
+    form = next(generator)
+    with pytest.raises(StopIteration) as stop:
+        generator.send(form.model_validate({"sdp_vlan_2": 2100}))
+    assert stop.value.value == [None, 2100]

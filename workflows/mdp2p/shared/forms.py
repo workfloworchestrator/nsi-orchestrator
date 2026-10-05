@@ -15,18 +15,27 @@
 
 The create form picks two endpoints (source and destination) from the subscribed STPs and,
 optionally, service demarcation points to include or exclude from the path. STPs that are already
-part of an SDP are shown but labelled, and gated behind a checkbox (see ``create_mdp2p``).
+part of an SDP are shown but labelled, and gated behind a checkbox (see ``create_mdp2p``). When SDPs
+are included, a second page asks for an optional VLAN on each.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import chain, groupby
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 from annotated_types import Ge, Le
 from orchestrator.core.forms import FormPage
-from pydantic import ConfigDict, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    create_model,
+    field_validator,
+    model_validator,
+)
 from pydantic_forms.validators import Choice, Divider, choice_list
 
 from products.product_blocks.sdp import ServiceDemarcationPointBlock
@@ -146,6 +155,9 @@ class SdpTopology:
     stps: dict[str, tuple[str, str]]
     """Subscription id -> its ``(stp_a_id, stp_z_id)`` pair."""
 
+    label_groups: dict[str, tuple[str, str]]
+    """Subscription id -> the VLAN ranges of its ``(stp_a, stp_z)`` pair."""
+
     @cached_property
     def pairs(self) -> set[frozenset[str]]:
         """The SDP topology as an undirected edge set."""
@@ -156,9 +168,25 @@ class SdpTopology:
         """Every STP that is part of an SDP."""
         return set(chain.from_iterable(self.stps.values()))
 
-    def ero(self, source_stp: str, dest_stp: str, include_sdps: list[str]) -> list[str]:
-        """The ERO for ``include_sdps`` (subscription ids, in the user's order). Raises if unroutable."""
-        return ero_stps(source_stp, dest_stp, [self.stps[str(sdp_id)] for sdp_id in include_sdps], self.pairs)
+    def ero(
+        self, source_stp: str, dest_stp: str, include_sdps: list[str], sdp_vlans: list[int | None] | None = None
+    ) -> list[str]:
+        """The ERO for ``include_sdps`` (subscription ids, in the user's order). Raises if unroutable.
+
+        ``sdp_vlans`` pins the VLAN on each SDP, aligned with ``include_sdps``; ``None`` leaves the
+        choice to the PCE.
+        """
+        stps = ero_stps(source_stp, dest_stp, [self.stps[str(sdp_id)] for sdp_id in include_sdps], self.pairs)
+        vlans = sdp_vlans or [None] * len(stps)
+        return [stp if vlan is None else f"{stp}?vlan={vlan}" for stp, vlan in zip(stps, vlans, strict=True)]
+
+    def common_vlans(self, sdp_id: str) -> str:
+        """The VLANs both ends of an SDP advertise, as a compact range string ("" if none)."""
+        side_a, side_z = (
+            {vlan for low, high in vlan_ranges(group) for vlan in range(low, high + 1)}
+            for group in self.label_groups[sdp_id]
+        )
+        return _collapse_ranges(sorted(side_a & side_z))
 
 
 def sdp_topology() -> SdpTopology:
@@ -170,6 +198,7 @@ def sdp_topology() -> SdpTopology:
     return SdpTopology(
         names={sid: sdp.sdp_name for sid, sdp in sdps.items()},
         stps={sid: (sdp.stps[0].stp_id, sdp.stps[1].stp_id) for sid, sdp in sdps.items()},
+        label_groups={sid: (sdp.stps[0].label_group, sdp.stps[1].label_group) for sid, sdp in sdps.items()},
     )
 
 
@@ -195,13 +224,62 @@ CONNECTION_SUMMARY_FIELDS = [
 ]
 
 
-def path_summary(topology: SdpTopology, include_sdps: list[str]) -> str:
-    """The included SDPs as a readable string.
+def path_summary(topology: SdpTopology, include_sdps: list[str], sdp_vlans: list[int | None] | None = None) -> str:
+    """The included SDPs, with any pinned VLAN, as a readable string.
 
     The summary page renders every field with ``str()``, which on a list of ``Choice`` members
     would show enum reprs of subscription ids, so name the SDPs instead.
     """
-    return ", ".join(topology.names[str(sdp_id)] for sdp_id in include_sdps) or "unconstrained"
+
+    def hop(sdp_id: str, vlan: int | None) -> str:
+        return topology.names[str(sdp_id)] + ("" if vlan is None else f" (VLAN {vlan})")
+
+    vlans = sdp_vlans or [None] * len(include_sdps)
+    return ", ".join(hop(sdp_id, vlan) for sdp_id, vlan in zip(include_sdps, vlans, strict=True)) or "unconstrained"
+
+
+def sdp_vlan_form(topology: SdpTopology, include_sdps: list[str], defaults: dict[str, int]) -> type[FormPage]:
+    """One optional VLAN per included SDP, in path order.
+
+    Field names are positional (``sdp_vlan_1``, ...) because the same SDP cannot appear twice and the
+    order is the path order; each field is titled with its SDP. ``defaults`` maps SDP subscription
+    id to the VLAN to prefill.
+    """
+
+    def field(sdp_id: str) -> tuple[Any, Any]:
+        allowed = topology.common_vlans(sdp_id)
+
+        def within_sdp(vlan: int | None) -> int | None:
+            if vlan is not None and not vlan_in_label_group(vlan, allowed):
+                raise ValueError(f"must be a VLAN both ends of the SDP allow ({allowed or 'none'})")
+            return vlan
+
+        return (
+            Annotated[Vlan | None, AfterValidator(within_sdp)],
+            Field(
+                defaults.get(sdp_id),
+                title=f"VLAN on {topology.names[sdp_id]}",
+                description=f"Optional, from {allowed or 'none'}; leave empty to let the PCE choose",
+            ),
+        )
+
+    class SdpVlanPage(FormPage):
+        model_config = ConfigDict(title="VLANs on the included SDPs")
+
+    fields = {f"sdp_vlan_{index}": field(str(sdp_id)) for index, sdp_id in enumerate(include_sdps, start=1)}
+    form = create_model("SdpVlanForm", __base__=SdpVlanPage, **fields)  # type: ignore[call-overload]
+    return cast("type[FormPage]", form)
+
+
+def sdp_vlan_input(
+    topology: SdpTopology, include_sdps: list[str], defaults: dict[str, int] | None = None
+) -> Generator[type[FormPage], FormPage, list[int | None]]:
+    """Ask for the per-SDP VLANs, skipping the page when no SDP is included."""
+    if not include_sdps:
+        return []
+    user_input = yield sdp_vlan_form(topology, include_sdps, defaults or {})
+    values = user_input.model_dump()
+    return [values[f"sdp_vlan_{index}"] for index in range(1, len(include_sdps) + 1)]
 
 
 def connection_form(
@@ -291,6 +369,8 @@ __all__ = [
     "sdp_block_for",
     "sdp_selector",
     "sdp_topology",
+    "sdp_vlan_form",
+    "sdp_vlan_input",
     "stp_block_for",
     "stp_selector",
     "stps_used_in_sdp",

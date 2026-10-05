@@ -132,7 +132,8 @@ def reserve(
     """Reserve a connection and return the aggregator-assigned ``connectionId``.
 
     The ``source_stp`` / ``dest_stp`` strings must already carry their VLAN (``...?vlan=<n>``).
-    ``ero`` is the ordered list of intermediate STPs the path must traverse, without their VLAN.
+    ``ero`` is the ordered list of intermediate STPs the path must traverse; each may carry a
+    ``?vlan=<n>`` to pin the VLAN on that SDP, or none to let the PCE choose.
     The final RESERVED/FAILED status arrives later via the callback to ``callback_url``.
     """
     p2ps: dict[str, Any] = {"capacity": capacity, "sourceSTP": source_stp, "destSTP": dest_stp}

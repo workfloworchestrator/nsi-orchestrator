@@ -32,18 +32,23 @@ class ConstraintType(StrEnum):
 class SdpConstraintBlockInactive(ProductBlockModel, product_block_name="SdpConstraint"):
     constraint_type: ConstraintType | None = None
     sdp: ServiceDemarcationPointBlockInactive | None = None
+    # Optional in every lifecycle: without it the PCE picks the VLAN on the SDP.
+    vlan: int | None = None
 
 
 class SdpConstraintBlockProvisioning(SdpConstraintBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
     constraint_type: ConstraintType
     sdp: ServiceDemarcationPointBlockProvisioning
+    vlan: int | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def title(self) -> str:
-        return f"{self.constraint_type} {self.sdp.sdp_name}"
+        vlan = f" VLAN {self.vlan}" if self.vlan is not None else ""
+        return f"{self.constraint_type} {self.sdp.sdp_name}{vlan}"
 
 
 class SdpConstraintBlock(SdpConstraintBlockProvisioning, lifecycle=[SubscriptionLifecycle.ACTIVE]):
     constraint_type: ConstraintType
     sdp: ServiceDemarcationPointBlock
+    vlan: int | None = None
