@@ -70,6 +70,7 @@ classDiagram
             +state
             +global_reservation_id
             +connection_id
+            +last_error
         }
         class ServiceAccessPointBlock {
             +vlan
@@ -195,7 +196,10 @@ holds a `VirtualCircuit` block with two `ServiceAccessPoint`s (each a subscribed
 carried as the SAP `vlan`), an ordered list of `SdpConstraint`s (the SDPs the path must traverse, each with an optional VLAN,
 sent to the aggregator as an Explicit Route Object — see [Path constraints](#path-constraints)), the
 requested `service_speed`, the orchestrator-generated `global_reservation_id`, the aggregator-assigned
-`connection_id`, and the reservation `state`.
+`connection_id`, the reservation `state`, and the `last_error`: the aggregator-proxy's `lastError` for the
+last failed reserve, provision or release, cleared when one succeeds. Reconcile copies the aggregator's
+`lastError` whenever the aggregator reports a stable state, which also fills it in on circuits that
+failed before the field existed.
 
 The reservation `state` is driven by a small [python-statemachine](https://pypi.org/project/python-statemachine/)
 connection state machine (`CREATED → RESERVED → ACTIVATED`, with `terminate` to `TERMINATED`, any

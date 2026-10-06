@@ -32,28 +32,49 @@ def _vc_sub(**vc_fields: object) -> SimpleNamespace:
 
 
 @pytest.mark.parametrize(
-    ("module_name", "func_name", "start_state", "callback_status", "expected_state"),
+    ("module_name", "func_name", "start_state", "callback_status", "expected_state", "expected_error"),
     [
-        pytest.param("create_mdp2p", "process_reservation_result", "CREATED", "RESERVED", "RESERVED", id="reserve-ok"),
-        pytest.param("create_mdp2p", "process_reservation_result", "CREATED", "FAILED", "FAILED", id="reserve-failed"),
         pytest.param(
-            "provision_mdp2p", "process_provision_result", "RESERVED", "ACTIVATED", "ACTIVATED", id="provision-ok"
+            "create_mdp2p", "process_reservation_result", "CREATED", "RESERVED", "RESERVED", None, id="reserve-ok"
         ),
         pytest.param(
-            "provision_mdp2p", "process_provision_result", "RESERVED", "FAILED", "FAILED", id="provision-failed"
+            "create_mdp2p", "process_reservation_result", "CREATED", "FAILED", "FAILED", "boom", id="reserve-failed"
         ),
-        pytest.param("release_mdp2p", "process_release_result", "ACTIVATED", "RESERVED", "RESERVED", id="release-ok"),
-        pytest.param("release_mdp2p", "process_release_result", "ACTIVATED", "FAILED", "FAILED", id="release-failed"),
+        pytest.param(
+            "provision_mdp2p",
+            "process_provision_result",
+            "RESERVED",
+            "ACTIVATED",
+            "ACTIVATED",
+            None,
+            id="provision-ok",
+        ),
+        pytest.param(
+            "provision_mdp2p", "process_provision_result", "RESERVED", "FAILED", "FAILED", "boom", id="provision-failed"
+        ),
+        pytest.param(
+            "release_mdp2p", "process_release_result", "ACTIVATED", "RESERVED", "RESERVED", None, id="release-ok"
+        ),
+        pytest.param(
+            "release_mdp2p", "process_release_result", "ACTIVATED", "FAILED", "FAILED", "boom", id="release-failed"
+        ),
         pytest.param(
             "terminate_mdp2p",
             "process_terminate_result",
             "RESERVED",
             "TERMINATED",
             "TERMINATED",
+            "earlier",
             id="terminate-reserved",
         ),
         pytest.param(
-            "terminate_mdp2p", "process_terminate_result", "FAILED", "TERMINATED", "TERMINATED", id="terminate-failed"
+            "terminate_mdp2p",
+            "process_terminate_result",
+            "FAILED",
+            "TERMINATED",
+            "TERMINATED",
+            "earlier",
+            id="terminate-failed",
         ),
     ],
 )
@@ -63,42 +84,53 @@ def test_process_step_sets_state_and_refreshes_description(
     start_state: str,
     callback_status: str,
     expected_state: str,
+    expected_error: str | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A failure stores the aggregator's lastError, a success clears it, and terminate keeps the last one."""
     module = importlib.import_module(f"workflows.mdp2p.{module_name}")
     monkeypatch.setattr(module, "description", lambda sub: f"desc({sub.vc.state})")
     step = module.__dict__[func_name].__wrapped__
 
-    subscription = _vc_sub(state=start_state, connection_id="c1")
+    subscription = _vc_sub(state=start_state, connection_id="c1", last_error="earlier")
     result = step(subscription=subscription, callback_result={"status": callback_status, "lastError": "boom"})
 
     updated = result["subscription"]
     assert updated.vc.state == expected_state
+    assert updated.vc.last_error == expected_error
     assert updated.description == f"desc({expected_state})"
 
 
 @pytest.mark.parametrize(
-    ("start_state", "aggregator_status", "expected_state"),
+    ("start_state", "aggregator_status", "expected_state", "expected_error"),
     [
-        pytest.param("RESERVED", "ACTIVATED", "ACTIVATED", id="drift-synced"),
-        pytest.param("RESERVED", "ACTIVATING", "RESERVED", id="transient-left-alone"),
-        pytest.param("ACTIVATED", "ACTIVATED", "ACTIVATED", id="already-in-sync"),
+        pytest.param("RESERVED", "FAILED", "FAILED", "aggregator says", id="drift-synced"),
+        pytest.param("RESERVED", "ACTIVATING", "RESERVED", "earlier", id="transient-left-alone"),
+        pytest.param("FAILED", "FAILED", "FAILED", "aggregator says", id="in-sync-error-backfilled"),
     ],
 )
 def test_reconcile_connection_state(
-    start_state: str, aggregator_status: str, expected_state: str, monkeypatch: pytest.MonkeyPatch
+    start_state: str,
+    aggregator_status: str,
+    expected_state: str,
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Any stable aggregator status brings its lastError along; a transient one leaves both alone."""
     module = importlib.import_module("workflows.mdp2p.reconcile_mdp2p")
     monkeypatch.setattr(module, "description", lambda sub: f"desc({sub.vc.state})")
     monkeypatch.setattr(
-        module.aggregator_proxy, "get_reservation", lambda _cid: SimpleNamespace(status=aggregator_status)
+        module.aggregator_proxy,
+        "get_reservation",
+        lambda _cid: SimpleNamespace(status=aggregator_status, last_error="aggregator says"),
     )
     step = module.reconcile_connection_state.__wrapped__
 
-    subscription = _vc_sub(state=start_state, connection_id="c1")
+    subscription = _vc_sub(state=start_state, connection_id="c1", last_error="earlier")
     result = step(subscription=subscription)
 
     assert result["subscription"].vc.state == expected_state
+    assert result["subscription"].vc.last_error == expected_error
 
 
 def _validate_subscription_and_reservation() -> tuple[SimpleNamespace, SimpleNamespace]:

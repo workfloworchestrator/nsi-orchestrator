@@ -70,6 +70,7 @@ def process_provision_result(subscription: MultiDomainPoint2PointProvisioning, c
         )
     event = "provision_confirmed" if status == ConnectionState.ACTIVATED else "provision_failed"
     subscription.vc.state = apply(subscription.vc.state, event)
+    subscription.vc.last_error = callback_result.get("lastError") if status != ConnectionState.ACTIVATED else None
     subscription.description = description(subscription)
     return {"subscription": subscription}
 

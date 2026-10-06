@@ -70,6 +70,7 @@ def process_release_result(subscription: MultiDomainPoint2PointProvisioning, cal
         )
     event = "release_confirmed" if status == ConnectionState.RESERVED else "release_failed"
     subscription.vc.state = apply(subscription.vc.state, event)
+    subscription.vc.last_error = callback_result.get("lastError") if status != ConnectionState.RESERVED else None
     subscription.description = description(subscription)
     return {"subscription": subscription}
 

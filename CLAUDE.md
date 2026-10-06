@@ -188,6 +188,11 @@ Both need the pgvector extension.
   the gate is one line in `create_mdp2p._check_endpoints`.
 - **A retry mints a new `global_reservation_id`.** The aggregator-proxy dedups on it *before* reading
   the criteria, so reusing it would hand back the old failed connection and ignore every correction.
+- **`vc.last_error` is declared on all three lifecycle classes.** orchestrator-core saves only the
+  fields of the class the subscription is loaded as, and each lifecycle subclass redeclares the block's
+  fields. A field on `VirtualCircuitBlockInactive` alone is set by the step and then silently dropped
+  on save. The `process_*_result` steps set it from the callback's `lastError` on failure and clear it
+  on success. Terminate leaves it, so a terminated circuit still shows why it failed.
 
 ## Conventions
 
