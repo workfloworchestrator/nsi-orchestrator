@@ -59,6 +59,9 @@ def reconcile_connection_state(subscription: MultiDomainPoint2Point) -> State:
         )
         subscription.vc.state = new_state
         subscription.description = description(subscription)
+    # Also when the state already matches, so a circuit that failed before last_error existed gets it.
+    if reservation.status in RECONCILABLE_STATES:
+        subscription.vc.last_error = reservation.last_error
 
     return {"subscription": subscription}
 

@@ -113,7 +113,9 @@ def failed_mdp2p_subscription(stp_subscriptions: dict[str, str], sdp_subscriptio
     )
     assert_complete(result)
     subscription_id = str(extract_state(result)["subscription_id"])
-    assert MultiDomainPoint2Point.from_subscription(subscription_id).vc.state == "FAILED"
+    vc = MultiDomainPoint2Point.from_subscription(subscription_id).vc
+    assert vc.state == "FAILED"
+    assert vc.last_error == "no path found"
     return subscription_id
 
 
@@ -147,6 +149,7 @@ def test_retry_reservation_terminates_the_old_connection_and_reserves_again(
     assert after.state == "RESERVED"
     assert after.connection_id == "conn-2"
     assert after.service_speed == 2000
+    assert after.last_error is None
     # A fresh id, or the proxy would dedup on the old one and ignore every correction.
     assert after.global_reservation_id != before.global_reservation_id
 
@@ -323,9 +326,24 @@ def test_terminate_mdp2p_closes_an_already_terminated_connection(
 
 def test_reconcile_mdp2p_syncs_state(mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch) -> None:
     # The aggregator reports the connection drifted to ACTIVATED (a missed provision callback).
-    monkeypatch.setattr(aggregator_proxy, "get_reservation", lambda _cid: SimpleNamespace(status="ACTIVATED"))
+    monkeypatch.setattr(
+        aggregator_proxy, "get_reservation", lambda _cid: SimpleNamespace(status="ACTIVATED", last_error=None)
+    )
 
     result, _, _ = run_workflow("reconcile_mdp2p", [{"subscription_id": mdp2p_subscription}])
 
     assert_complete(result)
     assert MultiDomainPoint2Point.from_subscription(mdp2p_subscription).vc.state == "ACTIVATED"
+
+
+def test_reconcile_mdp2p_stores_the_aggregator_error(mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    error = "activateFailed: 00800: GENERIC_RM_ERROR: Could not open socket (nsaId=urn:supa)"
+    monkeypatch.setattr(
+        aggregator_proxy, "get_reservation", lambda _cid: SimpleNamespace(status="FAILED", last_error=error)
+    )
+
+    result, _, _ = run_workflow("reconcile_mdp2p", [{"subscription_id": mdp2p_subscription}])
+
+    assert_complete(result)
+    vc = MultiDomainPoint2Point.from_subscription(mdp2p_subscription).vc
+    assert (vc.state, vc.last_error) == ("FAILED", error)

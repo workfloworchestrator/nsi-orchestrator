@@ -78,3 +78,6 @@ product_blocks:
         type: str
         description: "Aggregator-assigned connection id, known after the reserve callback"
         required: active
+      - name: last_error
+        type: str
+        description: "The aggregator's reason for the last failed operation, empty after a success"

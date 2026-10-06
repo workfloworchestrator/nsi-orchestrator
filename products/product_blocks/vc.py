@@ -42,6 +42,7 @@ class VirtualCircuitBlockInactive(ProductBlockModel, product_block_name="Virtual
     state: str | None = None
     global_reservation_id: str | None = None
     connection_id: str | None = None
+    last_error: str | None = None
 
 
 class VirtualCircuitBlockProvisioning(VirtualCircuitBlockInactive, lifecycle=[SubscriptionLifecycle.PROVISIONING]):
@@ -52,6 +53,7 @@ class VirtualCircuitBlockProvisioning(VirtualCircuitBlockInactive, lifecycle=[Su
     state: str
     global_reservation_id: str
     connection_id: str | None = None
+    last_error: str | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -67,3 +69,4 @@ class VirtualCircuitBlock(VirtualCircuitBlockProvisioning, lifecycle=[Subscripti
     state: str
     global_reservation_id: str
     connection_id: str
+    last_error: str | None = None
