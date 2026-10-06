@@ -41,18 +41,17 @@ from products.services.description import description
 from settings import settings
 from workflows.mdp2p.create_mdp2p import process_reservation_result, reserve_connection
 from workflows.mdp2p.shared.forms import (
-    CONNECTION_SUMMARY_FIELDS,
+    SdpVlans,
     connection_form,
     fetch_vlans_in_use,
-    path_summary,
-    sdp_block_for,
+    include_constraints,
+    path_input,
     sdp_topology,
-    sdp_vlan_input,
     stp_block_for,
 )
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
 from workflows.mdp2p.terminate_mdp2p import terminate_connection
-from workflows.shared import create_summary_form, raise_form_validation_error
+from workflows.shared import raise_form_validation_error
 
 logger = structlog.get_logger(__name__)
 
@@ -91,24 +90,16 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
 
     user_input = yield form
     user_input_dict: State = user_input.model_dump()
-    include_sdps = [str(sdp_id) for sdp_id in user_input_dict["include_sdps"]]
     # Keyed by SDP, so a VLAN follows its SDP when the user reorders or drops others.
     stored_vlans = {
         str(constraint.sdp.owner_subscription_id): constraint.vlan
         for constraint in included
         if constraint.vlan is not None
     }
-    sdp_vlans = yield from sdp_vlan_input(topology, include_sdps, in_use_by_stp, stored_vlans)
-
-    summary_input = user_input_dict | {"path": path_summary(topology, include_sdps, sdp_vlans)}
-    # A single column, not modify_summary_form's before/after: these are not VC attributes, and the
-    # "before" is the reservation that just failed.
-    yield from create_summary_form(summary_input, subscription.product.name, CONNECTION_SUMMARY_FIELDS)
-
-    ero = topology.ero(
-        str(user_input_dict["source_stp"]), str(user_input_dict["destination_stp"]), include_sdps, sdp_vlans
-    )
-    return user_input_dict | {"subscription": subscription, "ero": ero, "sdp_vlans": sdp_vlans}
+    # The summary is create's single column, not modify_summary_form's before/after: these are not
+    # VC attributes, and the "before" is the reservation that just failed.
+    path = yield from path_input(topology, user_input_dict, in_use_by_stp, subscription.product.name, stored_vlans)
+    return user_input_dict | path | {"subscription": subscription}
 
 
 @step("Process terminate result")
@@ -129,7 +120,7 @@ def update_subscription(
     destination_stp: str,
     destination_vlan: int,
     include_sdps: list[str],
-    sdp_vlans: list[int | None],
+    sdp_vlans: SdpVlans,
 ) -> State:
     subscription_id = subscription.subscription_id
     vc = subscription.vc
@@ -143,15 +134,7 @@ def update_subscription(
             subscription_id=subscription_id, vlan=str(destination_vlan), stp=stp_block_for(destination_stp)
         ),
     ]
-    vc.sdp_constraints = [
-        SdpConstraintBlockProvisioning.new(
-            subscription_id=subscription_id,
-            constraint_type=ConstraintType.INCLUDE,
-            sdp=sdp_block_for(sdp_id),
-            vlan=vlan,
-        )
-        for sdp_id, vlan in zip(include_sdps, sdp_vlans, strict=True)
-    ]
+    vc.sdp_constraints = include_constraints(SdpConstraintBlockProvisioning, subscription_id, include_sdps, sdp_vlans)
     # The aggregator dedups on globalReservationId before it reads the criteria, so reusing the old
     # one would hand back the old failed connection and quietly ignore every correction above.
     vc.global_reservation_id = f"urn:uuid:{uuid4()}"

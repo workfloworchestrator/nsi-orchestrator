@@ -24,6 +24,7 @@ from pydantic_forms.exceptions import FormValidationError
 from products.product_types.mdp2p import MultiDomainPoint2Point
 from services import aggregator_proxy
 from services.aggregator_proxy import AggregatorReservation
+from tests import held_reservation
 from tests.workflows import (
     assert_awaiting_callback,
     assert_complete,
@@ -82,14 +83,7 @@ def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
 
     monkeypatch.setattr(aggregator_proxy, "reserve", fake_reserve)
 
-    form = _CREATE_FORM | {
-        "source_stp": PATH_STPS["source"],
-        "source_vlan": 1001,
-        "destination_stp": PATH_STPS["destination"],
-        "destination_vlan": 1002,
-        "allow_stps_in_sdp": False,
-        "include_sdps": [path_subscriptions["A <-> B"], path_subscriptions["B <-> C"]],
-    }
+    form = _path_form(path_subscriptions["A <-> B"], path_subscriptions["B <-> C"])
     result, process, step_log = run_workflow(
         "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, vlan_page, {}]
     )
@@ -164,14 +158,7 @@ def test_retry_reservation_prefills_sdp_vlans_by_sdp(
     from workflows.mdp2p import retry_reservation
 
     sdp_ab, sdp_bc = path_subscriptions["A <-> B"], path_subscriptions["B <-> C"]
-    form = _CREATE_FORM | {
-        "source_stp": PATH_STPS["source"],
-        "destination_stp": PATH_STPS["destination"],
-        "source_vlan": 1001,
-        "destination_vlan": 1002,
-        "allow_stps_in_sdp": False,
-        "include_sdps": [sdp_ab, sdp_bc],
-    }
+    form = _path_form(sdp_ab, sdp_bc)
     result, process, step_log = run_workflow(
         "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {"sdp_vlan_2": 1600}, {}]
     )
@@ -180,7 +167,7 @@ def test_retry_reservation_prefills_sdp_vlans_by_sdp(
 
     # The failed connection still holds its VLANs, on the endpoints and on the SDP, until retry
     # terminates it; retry must leave it out so they can be kept.
-    failed = _held_reservation("conn-1", "FAILED", 1001, 1002, [(PATH_STPS["b_to_c"], PATH_STPS["c_to_b"], 1600)])
+    failed = _path_reservation("FAILED", "conn-1", [(PATH_STPS["b_to_c"], PATH_STPS["c_to_b"], 1600)])
     monkeypatch.setattr(forms, "list_reservations", lambda **_kwargs: [failed])
 
     generator = retry_reservation.initial_input_form_generator(subscription_id)
@@ -196,16 +183,10 @@ def test_create_mdp2p_rejects_a_vlan_in_use_on_an_included_sdp(
     path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A VLAN another of our reservations holds on the SDP is refused before the workflow starts."""
-    held = _held_reservation("other", "RESERVED", 1100, 1200, [(PATH_STPS["a_to_b"], PATH_STPS["b_to_a"], 1500)])
+    # Other edge VLANs, so only the SDP clashes.
+    held = _path_reservation("RESERVED", "other", [(PATH_STPS["a_to_b"], PATH_STPS["b_to_a"], 1500)], (1100, 1200))
     monkeypatch.setattr(forms, "list_reservations", lambda **_kwargs: [held])
-    form = _CREATE_FORM | {
-        "source_stp": PATH_STPS["source"],
-        "source_vlan": 1001,
-        "destination_stp": PATH_STPS["destination"],
-        "destination_vlan": 1002,
-        "allow_stps_in_sdp": False,
-        "include_sdps": [path_subscriptions["A <-> B"]],
-    }
+    form = _path_form(path_subscriptions["A <-> B"])
 
     with pytest.raises(FormValidationError, match="already in use on the SDP"):
         run_workflow(
@@ -213,28 +194,29 @@ def test_create_mdp2p_rejects_a_vlan_in_use_on_an_included_sdp(
         )
 
 
-def _held_reservation(
-    connection_id: str, status: str, source_vlan: int, dest_vlan: int, sdps: list[tuple[str, str, int]]
+def _path_form(*include_sdps: str) -> dict[str, object]:
+    """The create form between the path's edges, through ``include_sdps`` in that order."""
+    return _CREATE_FORM | {
+        "source_stp": PATH_STPS["source"],
+        "source_vlan": 1001,
+        "destination_stp": PATH_STPS["destination"],
+        "destination_vlan": 1002,
+        "allow_stps_in_sdp": False,
+        "include_sdps": list(include_sdps),
+    }
+
+
+def _path_reservation(
+    status: str, connection_id: str, sdps: list[tuple[str, str, int]], edge_vlans: tuple[int, int] = (1001, 1002)
 ) -> AggregatorReservation:
-    """A reservation between the path's edges whose segments cross ``sdps`` (near end, far end, VLAN)."""
-    segments = [
-        {"order": order, "sourceSTP": f"{near}?vlan={vlan}", "destSTP": f"{far}?vlan={vlan}"}
-        for order, (near, far, vlan) in enumerate(sdps)
-    ]
-    return AggregatorReservation.model_validate(
-        {
-            "connectionId": connection_id,
-            "description": "d",
-            "status": status,
-            "criteria": {
-                "p2ps": {
-                    "capacity": 1000,
-                    "sourceSTP": f"{PATH_STPS['source']}?vlan={source_vlan}",
-                    "destSTP": f"{PATH_STPS['destination']}?vlan={dest_vlan}",
-                }
-            },
-            "segments": segments,
-        }
+    """A reservation between the path's edges crossing ``sdps``; by default on ``_path_form``'s VLANs."""
+    source_vlan, destination_vlan = edge_vlans
+    return held_reservation(
+        status,
+        f"{PATH_STPS['source']}?vlan={source_vlan}",
+        f"{PATH_STPS['destination']}?vlan={destination_vlan}",
+        connection_id=connection_id,
+        sdps=sdps,
     )
 
 

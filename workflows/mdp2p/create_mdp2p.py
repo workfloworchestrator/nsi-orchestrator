@@ -28,17 +28,16 @@ from products.services.description import description
 from services import aggregator_proxy
 from settings import settings
 from workflows.mdp2p.shared.forms import (
-    CONNECTION_SUMMARY_FIELDS,
+    SdpVlans,
     connection_form,
     fetch_vlans_in_use,
-    path_summary,
+    include_constraints,
+    path_input,
     sdp_block_for,
     sdp_topology,
-    sdp_vlan_input,
     stp_block_for,
 )
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
-from workflows.shared import create_summary_form
 
 logger = structlog.get_logger(__name__)
 
@@ -49,22 +48,8 @@ def initial_input_form_generator(product_name: str) -> FormGenerator:
 
     user_input = yield connection_form(product_name, topology, in_use_by_stp)
     user_input_dict: State = user_input.model_dump()
-    include_sdps = [str(sdp_id) for sdp_id in user_input_dict["include_sdps"]]
-    sdp_vlans = yield from sdp_vlan_input(topology, include_sdps, in_use_by_stp)
-
-    summary_input = user_input_dict | {"path": path_summary(topology, include_sdps, sdp_vlans)}
-    yield from create_summary_form(summary_input, product_name, CONNECTION_SUMMARY_FIELDS)
-
-    # Derived here, not in reserve_connection: the topology is already loaded and the form has just
-    # validated this exact order, so recomputing at step time would re-query and could disagree.
-    ero = topology.ero(
-        str(user_input_dict["source_stp"]), str(user_input_dict["destination_stp"]), include_sdps, sdp_vlans
-    )
-    return {
-        "customer_id": app_settings.DEFAULT_CUSTOMER_IDENTIFIER,
-        "ero": ero,
-        "sdp_vlans": sdp_vlans,
-    } | user_input_dict
+    path = yield from path_input(topology, user_input_dict, in_use_by_stp, product_name, {})
+    return {"customer_id": app_settings.DEFAULT_CUSTOMER_IDENTIFIER} | path | user_input_dict
 
 
 @step("Construct Subscription model")
@@ -79,7 +64,7 @@ def construct_mdp2p_model(
     destination_vlan: int,
     include_sdps: list[str],
     exclude_sdps: list[str],
-    sdp_vlans: list[int | None],
+    sdp_vlans: SdpVlans,
 ) -> State:
     mdp2p = MultiDomainPoint2PointInactive.from_product_id(
         product_id=product,
@@ -102,15 +87,7 @@ def construct_mdp2p_model(
             subscription_id=subscription_id, vlan=str(destination_vlan), stp=stp_block_for(destination_stp)
         ),
     ]
-    vc.sdp_constraints = [
-        SdpConstraintBlockInactive.new(
-            subscription_id=subscription_id,
-            constraint_type=ConstraintType.INCLUDE,
-            sdp=sdp_block_for(sdp_id),
-            vlan=vlan,
-        )
-        for sdp_id, vlan in zip(include_sdps, sdp_vlans, strict=True)
-    ] + [
+    vc.sdp_constraints = include_constraints(SdpConstraintBlockInactive, subscription_id, include_sdps, sdp_vlans) + [
         SdpConstraintBlockInactive.new(
             subscription_id=subscription_id, constraint_type=ConstraintType.EXCLUDE, sdp=sdp_block_for(sdp_id)
         )

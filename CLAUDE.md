@@ -173,7 +173,7 @@ Both need the pgvector extension.
   the UI prefers a translation over the title.
 - **In-use VLANs are fetched once per form generator and shared by its pages.** `fetch_vlans_in_use`
   runs at the top of the create/retry generator and its result is passed to `connection_form` and
-  `sdp_vlan_input`. pydantic-forms replays the generator from the start on every page submit, so a
+  `path_input`, which both workflows use for the pages after it. pydantic-forms replays the generator from the start on every page submit, so a
   fetch per page would multiply the aggregator calls, and each list costs the proxy one
   `queryNotificationSync` per live reservation. The list asks for `detail=full` because the SDP
   VLANs are only in the child segments; that costs the proxy no extra NSI call. Retry passes its own
