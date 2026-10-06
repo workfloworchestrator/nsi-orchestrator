@@ -15,31 +15,46 @@
 
 The create form picks two endpoints (source and destination) from the subscribed STPs and,
 optionally, service demarcation points to include or exclude from the path. STPs that are already
-part of an SDP are shown but labelled, and gated behind a checkbox (see ``create_mdp2p``).
+part of an SDP are shown but labelled, and gated behind a checkbox (see ``create_mdp2p``). When SDPs
+are included, a second page asks for an optional VLAN on each.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import chain, groupby
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
+from uuid import UUID
 
 from annotated_types import Ge, Le
 from orchestrator.core.forms import FormPage
-from pydantic import ConfigDict, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    create_model,
+    field_validator,
+    model_validator,
+)
+from pydantic_forms.types import State
 from pydantic_forms.validators import Choice, Divider, choice_list
 
 from products.product_blocks.sdp import ServiceDemarcationPointBlock
+from products.product_blocks.sdp_constraint import ConstraintType, SdpConstraintBlockInactive
 from products.product_blocks.stp import ServiceTerminationPointBlock
 from products.product_types.sdp import ServiceDemarcationPoint
 from products.product_types.stp import ServiceTerminationPoint
-from services.aggregator_proxy import list_reservations
+from services.aggregator_proxy import AggregatorReservation, list_reservations
 from workflows.mdp2p.shared.ero import ero_stps
 from workflows.sdp.shared.forms import stp_block_for, subscribed_sdp_pairs
-from workflows.shared import fetch_for_form, subscription_ids_for_product_type
+from workflows.shared import create_summary_form, fetch_for_form, subscription_ids_for_product_type
 
 # A VLAN id; the aggregator encodes it on the STP as "...?vlan=<n>".
 Vlan = Annotated[int, Ge(1), Le(4094)]
+
+# SDP subscription id -> pinned VLAN; an SDP without one leaves the choice to the PCE.
+SdpVlans = dict[str, int]
 
 
 def vlan_ranges(spec: str) -> list[tuple[int, int]]:
@@ -56,6 +71,11 @@ def vlan_ranges(spec: str) -> list[tuple[int, int]]:
     return [bounds(part.strip()) for part in spec.split(",") if part.strip()]
 
 
+def vlan_set(spec: str) -> set[int]:
+    """Every VLAN a ``vlan_ranges`` spec covers."""
+    return {vlan for low, high in vlan_ranges(spec) for vlan in range(low, high + 1)}
+
+
 def vlan_in_label_group(vlan: int, label_group: str) -> bool:
     """True if ``vlan`` falls within an STP's advertised VLAN ranges."""
     return any(low <= vlan <= high for low, high in vlan_ranges(label_group))
@@ -70,10 +90,14 @@ def _collapse_ranges(values: list[int]) -> str:
     return ",".join(f"{run[0]}" if run[0] == run[-1] else f"{run[0]}-{run[-1]}" for run in runs)
 
 
+def _free_ranges(allowed: set[int], in_use: set[int]) -> str:
+    """``allowed`` minus ``in_use`` as a compact range string."""
+    return _collapse_ranges(sorted(allowed - in_use)) or "none available"
+
+
 def available_vlan_ranges(label_group: str, in_use: set[int]) -> str:
     """The STP's free VLANs (``label_group`` minus ``in_use``) as a compact range string."""
-    free = sorted(vlan for low, high in vlan_ranges(label_group) for vlan in range(low, high + 1) if vlan not in in_use)
-    return _collapse_ranges(free) or "none available"
+    return _free_ranges(vlan_set(label_group), in_use)
 
 
 def subscribed_stps() -> list[ServiceTerminationPointBlock]:
@@ -92,23 +116,37 @@ def stps_used_in_sdp() -> set[str]:
 def _endpoint_vlan_pairs(endpoint: str) -> Iterator[tuple[str, int]]:
     """Yield ``(stp_id, vlan)`` for every VLAN an endpoint string (``<stp>?vlan=<spec>``) holds."""
     stp_id, _, vlan_spec = endpoint.partition("?vlan=")
-    return ((stp_id, vlan) for low, high in vlan_ranges(vlan_spec) for vlan in range(low, high + 1))
+    return ((stp_id, vlan) for vlan in vlan_set(vlan_spec))
 
 
-def vlans_in_use_by_stp() -> dict[str, set[int]]:
+def _reservation_endpoints(reservation: AggregatorReservation) -> Iterator[str]:
+    """The STPs a reservation holds a VLAN on: its own two ends and both ends of every child segment."""
+    own = [reservation.criteria.p2ps.source_stp, reservation.criteria.p2ps.dest_stp] if reservation.criteria else []
+    segments = chain.from_iterable((segment.source_stp, segment.dest_stp) for segment in reservation.segments or [])
+    return (stp for stp in chain(own, segments) if stp is not None)
+
+
+def vlans_in_use_by_stp(released_connection_id: str | None = None) -> dict[str, set[int]]:
     """VLANs currently held per STP id, parsed from the aggregator's reservations.
 
-    A reservation holds its VLANs in every state except ``TERMINATED`` (a ``FAILED`` reservation
-    only releases them once terminated), so only terminated reservations are excluded.
+    The child segments put the SDPs along each path in the map, not only the endpoints. A
+    reservation holds its VLANs in every state except ``TERMINATED`` (a ``FAILED`` reservation only
+    releases them once terminated), so terminated reservations are excluded, as is
+    ``released_connection_id``, a connection that is about to be terminated and reserved again.
     """
-    criteria = (
-        reservation.criteria
-        for reservation in list_reservations()
-        if reservation.criteria is not None and reservation.status != "TERMINATED"
+    held = (
+        reservation
+        for reservation in list_reservations(with_segments=True)
+        if reservation.status != "TERMINATED" and reservation.connection_id != released_connection_id
     )
-    endpoints = chain.from_iterable((item.p2ps.source_stp, item.p2ps.dest_stp) for item in criteria)
+    endpoints = chain.from_iterable(_reservation_endpoints(reservation) for reservation in held)
     pairs = sorted(chain.from_iterable(_endpoint_vlan_pairs(endpoint) for endpoint in endpoints))
     return {stp_id: {vlan for _, vlan in group} for stp_id, group in groupby(pairs, key=lambda pair: pair[0])}
+
+
+def fetch_vlans_in_use(released_connection_id: str | None = None) -> dict[str, set[int]]:
+    """``vlans_in_use_by_stp`` for a form generator, which fetches it once for all its pages."""
+    return fetch_for_form(lambda: vlans_in_use_by_stp(released_connection_id))
 
 
 def stp_selector(
@@ -146,6 +184,9 @@ class SdpTopology:
     stps: dict[str, tuple[str, str]]
     """Subscription id -> its ``(stp_a_id, stp_z_id)`` pair."""
 
+    vlans: dict[str, set[int]]
+    """Subscription id -> the VLANs both of its ends advertise."""
+
     @cached_property
     def pairs(self) -> set[frozenset[str]]:
         """The SDP topology as an undirected edge set."""
@@ -156,9 +197,16 @@ class SdpTopology:
         """Every STP that is part of an SDP."""
         return set(chain.from_iterable(self.stps.values()))
 
-    def ero(self, source_stp: str, dest_stp: str, include_sdps: list[str]) -> list[str]:
-        """The ERO for ``include_sdps`` (subscription ids, in the user's order). Raises if unroutable."""
-        return ero_stps(source_stp, dest_stp, [self.stps[str(sdp_id)] for sdp_id in include_sdps], self.pairs)
+    def ero(
+        self, source_stp: str, dest_stp: str, include_sdps: list[str], sdp_vlans: SdpVlans | None = None
+    ) -> list[str]:
+        """The ERO for ``include_sdps`` (subscription ids, in the user's order). Raises if unroutable.
+
+        ``sdp_vlans`` pins the VLAN on an SDP; an SDP without one leaves the choice to the PCE.
+        """
+        stps = ero_stps(source_stp, dest_stp, [self.stps[str(sdp_id)] for sdp_id in include_sdps], self.pairs)
+        vlans = [(sdp_vlans or {}).get(str(sdp_id)) for sdp_id in include_sdps]
+        return [stp if vlan is None else f"{stp}?vlan={vlan}" for stp, vlan in zip(stps, vlans, strict=True)]
 
 
 def sdp_topology() -> SdpTopology:
@@ -170,6 +218,7 @@ def sdp_topology() -> SdpTopology:
     return SdpTopology(
         names={sid: sdp.sdp_name for sid, sdp in sdps.items()},
         stps={sid: (sdp.stps[0].stp_id, sdp.stps[1].stp_id) for sid, sdp in sdps.items()},
+        vlans={sid: vlan_set(sdp.stps[0].label_group) & vlan_set(sdp.stps[1].label_group) for sid, sdp in sdps.items()},
     )
 
 
@@ -195,32 +244,125 @@ CONNECTION_SUMMARY_FIELDS = [
 ]
 
 
-def path_summary(topology: SdpTopology, include_sdps: list[str]) -> str:
-    """The included SDPs as a readable string.
+def path_summary(topology: SdpTopology, include_sdps: list[str], sdp_vlans: SdpVlans) -> str:
+    """The included SDPs, with any pinned VLAN, as a readable string.
 
     The summary page renders every field with ``str()``, which on a list of ``Choice`` members
     would show enum reprs of subscription ids, so name the SDPs instead.
     """
-    return ", ".join(topology.names[str(sdp_id)] for sdp_id in include_sdps) or "unconstrained"
+
+    def hop(sdp_id: str) -> str:
+        vlan = sdp_vlans.get(sdp_id)
+        return topology.names[sdp_id] + ("" if vlan is None else f" (VLAN {vlan})")
+
+    return ", ".join(hop(sdp_id) for sdp_id in include_sdps) or "unconstrained"
+
+
+def sdp_vlan_form(
+    topology: SdpTopology, include_sdps: list[str], defaults: SdpVlans, in_use_by_stp: dict[str, set[int]]
+) -> type[FormPage]:
+    """One optional VLAN per included SDP, in path order.
+
+    Field names are positional (``sdp_vlan_1``, ...) because the same SDP cannot appear twice and the
+    order is the path order; each field is titled with its SDP. ``defaults`` prefills by SDP. A VLAN
+    must be one both ends allow and in use on neither.
+    """
+
+    def field(sdp_id: str) -> tuple[Any, Any]:
+        allowed = topology.vlans[sdp_id]
+        in_use = set(chain.from_iterable(in_use_by_stp.get(stp_id, set()) for stp_id in topology.stps[sdp_id]))
+
+        def within_sdp(vlan: int | None) -> int | None:
+            if vlan is None:
+                return None
+            if vlan not in allowed:
+                raise ValueError(
+                    f"must be a VLAN both ends of the SDP allow ({_collapse_ranges(sorted(allowed)) or 'none'})"
+                )
+            if vlan in in_use:
+                raise ValueError("is already in use on the SDP")
+            return vlan
+
+        return (
+            Annotated[Vlan | None, AfterValidator(within_sdp)],
+            Field(
+                defaults.get(sdp_id),
+                title=f"VLAN on {topology.names[sdp_id]}",
+                description=f"Optional, free: {_free_ranges(allowed, in_use)}; leave empty to let the PCE choose",
+            ),
+        )
+
+    class SdpVlanPage(FormPage):
+        model_config = ConfigDict(title="VLANs on the included SDPs")
+
+    fields = {f"sdp_vlan_{index}": field(sdp_id) for index, sdp_id in enumerate(include_sdps, start=1)}
+    form = create_model("SdpVlanForm", __base__=SdpVlanPage, **fields)  # type: ignore[call-overload]
+    return cast("type[FormPage]", form)
+
+
+def sdp_vlan_input(
+    topology: SdpTopology, include_sdps: list[str], in_use_by_stp: dict[str, set[int]], defaults: SdpVlans
+) -> Generator[type[FormPage], FormPage, SdpVlans]:
+    """Ask for the per-SDP VLANs, skipping the page when no SDP is included; returns the pinned ones."""
+    if not include_sdps:
+        return {}
+    user_input = yield sdp_vlan_form(topology, include_sdps, defaults, in_use_by_stp)
+    # The page holds only the sdp_vlan_<n> fields, in path order.
+    vlans = user_input.model_dump().values()
+    return {sdp_id: vlan for sdp_id, vlan in zip(include_sdps, vlans, strict=True) if vlan is not None}
+
+
+def path_input(
+    topology: SdpTopology,
+    user_input: State,
+    in_use_by_stp: dict[str, set[int]],
+    product_name: str,
+    sdp_vlan_defaults: SdpVlans,
+) -> Generator[type[FormPage], FormPage, State]:
+    """The pages after the connection form, shared by create and retry: SDP VLANs, then the summary.
+
+    Returns ``ero`` and ``sdp_vlans`` for the state. The ERO is derived here rather than in the
+    reserve step: the topology is loaded and the form has just validated this exact order, so
+    recomputing at step time would re-query and could disagree.
+    """
+    include_sdps = [str(sdp_id) for sdp_id in user_input["include_sdps"]]
+    sdp_vlans = yield from sdp_vlan_input(topology, include_sdps, in_use_by_stp, sdp_vlan_defaults)
+    summary = user_input | {"path": path_summary(topology, include_sdps, sdp_vlans)}
+    yield from create_summary_form(summary, product_name, CONNECTION_SUMMARY_FIELDS)
+    ero = topology.ero(str(user_input["source_stp"]), str(user_input["destination_stp"]), include_sdps, sdp_vlans)
+    return {"ero": ero, "sdp_vlans": sdp_vlans}
+
+
+def include_constraints[Block: SdpConstraintBlockInactive](
+    block_type: type[Block], subscription_id: UUID, include_sdps: list[str], sdp_vlans: SdpVlans
+) -> list[Block]:
+    """An ``INCLUDE`` constraint per SDP, in path order, each with its pinned VLAN if any."""
+    return [
+        block_type.new(
+            subscription_id=subscription_id,
+            constraint_type=ConstraintType.INCLUDE,
+            sdp=sdp_block_for(sdp_id),
+            vlan=sdp_vlans.get(sdp_id),
+        )
+        for sdp_id in include_sdps
+    ]
 
 
 def connection_form(
     title: str,
     topology: SdpTopology,
+    in_use_by_stp: dict[str, set[int]],
     *,
     defaults: dict[str, object] | None = None,
-    released_vlans: set[int] = frozenset(),  # type: ignore[assignment]
 ) -> type[FormPage]:
     """The form describing an MDP2P connection, shared by the create and retry workflows.
 
-    ``defaults`` prefills fields for the retry workflow; a field absent from it stays required.
-    ``released_vlans`` are VLANs the aggregator still reports as in use but which this subscription
-    is about to give up, so a retry can keep the VLAN it already had.
+    ``in_use_by_stp`` comes from ``fetch_vlans_in_use``. ``defaults`` prefills fields for the retry
+    workflow; a field absent from it stays required.
     """
     values = defaults or {}
     stps = subscribed_stps()
     label_group_by_id = {stp.stp_id: stp.label_group for stp in stps}
-    in_use_by_stp = {stp_id: vlans - released_vlans for stp_id, vlans in fetch_for_form(vlans_in_use_by_stp).items()}
     ServiceTerminationPointChoice = stp_selector(stps, topology.stp_ids, in_use_by_stp)
     ServiceDemarcationPointChoice = sdp_selector(topology.names)
 
@@ -284,18 +426,24 @@ def connection_form(
 __all__ = [
     "CONNECTION_SUMMARY_FIELDS",
     "SdpTopology",
+    "SdpVlans",
     "Vlan",
     "available_vlan_ranges",
     "connection_form",
+    "fetch_vlans_in_use",
+    "include_constraints",
+    "path_input",
     "path_summary",
     "sdp_block_for",
     "sdp_selector",
     "sdp_topology",
+    "sdp_vlan_input",
     "stp_block_for",
     "stp_selector",
     "stps_used_in_sdp",
     "subscribed_stps",
     "vlan_in_label_group",
     "vlan_ranges",
+    "vlan_set",
     "vlans_in_use_by_stp",
 ]

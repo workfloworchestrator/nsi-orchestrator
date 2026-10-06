@@ -192,7 +192,7 @@ workflows manage its lifecycle:
 The multi domain point-to-point (MDP2P) product represents a connection reserved through the
 [NSI Aggregator Proxy](https://github.com/workfloworchestrator/nsi-aggregator-proxy). A subscription
 holds a `VirtualCircuit` block with two `ServiceAccessPoint`s (each a subscribed STP plus a VLAN
-carried as the SAP `vlan`), an ordered list of `SdpConstraint`s (the SDPs the path must traverse,
+carried as the SAP `vlan`), an ordered list of `SdpConstraint`s (the SDPs the path must traverse, each with an optional VLAN,
 sent to the aggregator as an Explicit Route Object — see [Path constraints](#path-constraints)), the
 requested `service_speed`, the orchestrator-generated `global_reservation_id`, the aggregator-assigned
 `connection_id`, and the reservation `state`.
@@ -209,7 +209,7 @@ retried or aborted. A retried step re-fires the request, which the Aggregator Pr
 idempotently.
 
 - **Create** — form for a description, source/destination STP and VLAN, the service speed, and SDPs
-  to include in the path. Each STP option is labelled with its still-free VLANs (its DDS range minus
+  to include in the path, each with an optional VLAN. Each STP option is labelled with its still-free VLANs (its DDS range minus
   the VLANs the aggregator reports in use), and STPs already part of an SDP are gated behind a
   checkbox; each VLAN is validated against its STP (within range and not already in use). Reserves
   the connection via `POST /reservations` with a freshly generated global reservation id; the state
@@ -243,6 +243,16 @@ end facing the source; the PCE derives the far end from the SDP itself. Naming t
 raise an error — the PCE routes around the SDP and returns a path that hairpins through the far
 domain — so `workflows/mdp2p/shared/ero.py` searches the SDP topology for a route that never
 re-enters a network and takes the source-facing end of each SDP from it.
+
+**Each included SDP can carry a VLAN.** When SDPs are included, a second form page asks for an
+optional VLAN per SDP. It must be one both ends of the SDP advertise and that neither end has in use.
+In-use VLANs come from the aggregator's reservations with their path segments (`GET
+/reservations?detail=full`). A VLAN is sent as
+`?vlan=<n>` on that SDP's ERO STP and stored on the `SdpConstraint` block; retry prefills it by SDP.
+Leave it empty to let the PCE choose. Pin it when the VLAN on the SDP matters: keeping the VLANs of an
+existing circuit when migrating it, or when the next domain cannot swap labels. In the second case the
+PCE picks the SDP's VLAN at random, independently of the legs after it, and an unlucky pick makes it
+route out of the non-swapping domain and back in, which the uPAs refuse.
 
 Two preconditions:
 

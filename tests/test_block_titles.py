@@ -71,9 +71,20 @@ from products.product_blocks.vc import VirtualCircuitBlockProvisioning
             SimpleNamespace(
                 constraint_type=ConstraintType.INCLUDE,
                 sdp=SimpleNamespace(sdp_name="Amsterdam to Geneva"),
+                vlan=None,
             ),
             "INCLUDE Amsterdam to Geneva",
             id="sdp_constraint",
+        ),
+        pytest.param(
+            SdpConstraintBlockProvisioning,
+            SimpleNamespace(
+                constraint_type=ConstraintType.INCLUDE,
+                sdp=SimpleNamespace(sdp_name="Amsterdam to Geneva"),
+                vlan=2393,
+            ),
+            "INCLUDE Amsterdam to Geneva VLAN 2393",
+            id="sdp_constraint_with_vlan",
         ),
         pytest.param(
             VirtualCircuitBlockProvisioning,

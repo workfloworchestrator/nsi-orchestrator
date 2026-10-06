@@ -24,12 +24,14 @@ import pytest
 from orchestrator.core.forms import FormPage
 from pydantic_forms.exceptions import FormValidationError
 
-from services.aggregator_proxy import AggregatorReservation
+from services.aggregator_proxy import AggregatorReservation, AggregatorSegment
+from tests import held_reservation
 from workflows.mdp2p.shared import forms
 from workflows.mdp2p.shared.forms import (
     available_vlan_ranges,
     stp_selector,
     vlan_in_label_group,
+    vlan_set,
     vlans_in_use_by_stp,
 )
 
@@ -137,10 +139,12 @@ _C = "urn:ogf:network:c.example.net:2025:topology"
 _SDP_AB = "11111111-1111-1111-1111-111111111111"
 _SDP_BC = "22222222-2222-2222-2222-222222222222"
 
-# A three-domain chain A <-> B <-> C, with an SDP subscription for each hop.
+# A three-domain chain A <-> B <-> C, with an SDP subscription for each hop. The ends of A <-> B
+# advertise overlapping but different ranges, so only 1500-1999 is usable on that SDP.
 _PATH_TOPOLOGY = forms.SdpTopology(
     names={_SDP_AB: "A <-> B", _SDP_BC: "B <-> C"},
     stps={_SDP_AB: (f"{_A}:to-b", f"{_B}:to-a"), _SDP_BC: (f"{_B}:to-c", f"{_C}:to-b")},
+    vlans={_SDP_AB: vlan_set("1000-1999") & vlan_set("1500-2500"), _SDP_BC: vlan_set("2000-2999")},
 )
 _EDGE_STPS = [
     SimpleNamespace(stp_id=f"{_A}:customer", stp_name="A edge", label_group="1000-1999"),
@@ -151,7 +155,7 @@ _EDGE_STPS = [
 def _create_form(monkeypatch: pytest.MonkeyPatch, topology: forms.SdpTopology, stps: list) -> type[FormPage]:
     """The create form, with the topology and STP inventory it would otherwise load from the DB."""
     create = importlib.import_module("workflows.mdp2p.create_mdp2p")
-    monkeypatch.setattr(forms, "vlans_in_use_by_stp", dict)
+    monkeypatch.setattr(create, "fetch_vlans_in_use", dict)
     monkeypatch.setattr(forms, "subscribed_stps", lambda: stps)
     monkeypatch.setattr(create, "sdp_topology", lambda: topology)
     return cast("type[FormPage]", next(create.initial_input_form_generator("MDP2P")))
@@ -204,29 +208,137 @@ def test_create_form_path_constraints(overrides: dict, message: str | None, monk
             form(**_form_values(**overrides))
 
 
-def test_vlans_in_use_by_stp_holds_failed_but_releases_terminated() -> None:
-    def reservation(status: str, source_vlan: int, dest_vlan: int) -> AggregatorReservation:
-        return AggregatorReservation.model_validate(
-            {
-                "connectionId": "c",
-                "description": "d",
-                "status": status,
-                "criteria": {
-                    "p2ps": {
-                        "capacity": 1000,
-                        "sourceSTP": f"urn:a?vlan={source_vlan}",
-                        "destSTP": f"urn:b?vlan={dest_vlan}",
-                    }
-                },
-            }
-        )
+@pytest.mark.parametrize(
+    ("reservations", "released", "expected"),
+    [
+        pytest.param(
+            [
+                held_reservation("RESERVED", "urn:a?vlan=1500", "urn:b?vlan=2500"),
+                held_reservation("FAILED", "urn:a?vlan=1600", "urn:b?vlan=2600"),
+                held_reservation("TERMINATED", "urn:a?vlan=1700", "urn:b?vlan=2700"),
+            ],
+            None,
+            {"urn:a": {1500, 1600}, "urn:b": {2500, 2600}},
+            id="failed-still-holds-terminated-has-released",
+        ),
+        pytest.param(
+            [
+                held_reservation(
+                    "RESERVED", "urn:a?vlan=1500", "urn:b?vlan=2500", sdps=[("urn:a:to-b", "urn:b:to-a", 1800)]
+                )
+            ],
+            None,
+            {"urn:a": {1500}, "urn:a:to-b": {1800}, "urn:b:to-a": {1800}, "urn:b": {2500}},
+            id="segments-add-the-sdp-along-the-path",
+        ),
+        pytest.param(
+            [
+                held_reservation(
+                    "FAILED",
+                    "urn:a?vlan=1500",
+                    "urn:b?vlan=2500",
+                    connection_id="retried",
+                    sdps=[("urn:a:to-b", "urn:b:to-a", 1800)],
+                ),
+                held_reservation("RESERVED", "urn:a?vlan=1600", "urn:b?vlan=2600", connection_id="other"),
+            ],
+            "retried",
+            {"urn:a": {1600}, "urn:b": {2600}},
+            id="released-connection-left-out",
+        ),
+    ],
+)
+def test_vlans_in_use_by_stp(
+    reservations: list[AggregatorReservation], released: str | None, expected: dict[str, set[int]]
+) -> None:
+    with patch.object(forms, "list_reservations", return_value=reservations) as listed:
+        assert vlans_in_use_by_stp(released_connection_id=released) == expected
+    listed.assert_called_once_with(with_segments=True)
 
-    reservations = [
-        reservation("RESERVED", 1500, 2500),
-        reservation("FAILED", 1600, 2600),  # FAILED still holds its VLANs
-        reservation("TERMINATED", 1700, 2700),  # TERMINATED has released them
-    ]
-    with patch.object(forms, "list_reservations", return_value=reservations):
-        in_use = vlans_in_use_by_stp()
 
-    assert in_use == {"urn:a": {1500, 1600}, "urn:b": {2500, 2600}}
+def test_vlans_in_use_by_stp_skips_a_segment_without_stps() -> None:
+    reservation = held_reservation("RESERVED", "urn:a?vlan=1500", "urn:b?vlan=2500")
+    reservation.segments = [AggregatorSegment()]
+    with patch.object(forms, "list_reservations", return_value=[reservation]):
+        assert vlans_in_use_by_stp() == {"urn:a": {1500}, "urn:b": {2500}}
+
+
+@pytest.mark.parametrize(
+    ("sdp_vlans", "expected"),
+    [
+        pytest.param(None, [f"{_A}:to-b", f"{_B}:to-c"], id="no-vlans-leaves-the-choice-to-the-pce"),
+        pytest.param({_SDP_AB: 1700}, [f"{_A}:to-b?vlan=1700", f"{_B}:to-c"], id="first-pinned"),
+        pytest.param(
+            {_SDP_AB: 1700, _SDP_BC: 2100}, [f"{_A}:to-b?vlan=1700", f"{_B}:to-c?vlan=2100"], id="both-pinned"
+        ),
+    ],
+)
+def test_ero_pins_the_vlan_on_the_source_facing_stp(sdp_vlans: forms.SdpVlans | None, expected: list[str]) -> None:
+    source, destination = f"{_A}:customer", f"{_C}:customer"
+    assert _PATH_TOPOLOGY.ero(source, destination, [_SDP_AB, _SDP_BC], sdp_vlans) == expected
+
+
+@pytest.mark.parametrize(
+    ("sdp_vlans", "expected"),
+    [
+        pytest.param({}, "A <-> B, B <-> C", id="no-vlans"),
+        pytest.param({_SDP_AB: 1700}, "A <-> B (VLAN 1700), B <-> C", id="one-pinned"),
+    ],
+)
+def test_path_summary_shows_pinned_vlans(sdp_vlans: forms.SdpVlans, expected: str) -> None:
+    assert forms.path_summary(_PATH_TOPOLOGY, [_SDP_AB, _SDP_BC], sdp_vlans) == expected
+
+
+# 1600 is held on the A end of A <-> B, 2100 on the C end of B <-> C, 1700 on an unrelated STP.
+_IN_USE = {f"{_A}:to-b": {1600}, f"{_C}:to-b": {2100}, f"{_A}:customer": {1700}}
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        pytest.param({}, None, id="all-optional"),
+        pytest.param({"sdp_vlan_1": 1500, "sdp_vlan_2": 2999}, None, id="range-boundaries"),
+        pytest.param({"sdp_vlan_1": 1200}, r"both ends of the SDP allow \(1500-1999\)", id="only-one-end-allows-it"),
+        pytest.param({"sdp_vlan_2": 1999}, r"both ends of the SDP allow \(2000-2999\)", id="outside-both-ends"),
+        pytest.param({"sdp_vlan_1": 4095}, "less than or equal to 4094", id="not-a-vlan"),
+        pytest.param({"sdp_vlan_1": 1600}, "already in use on the SDP", id="in-use-on-the-near-end"),
+        pytest.param({"sdp_vlan_2": 2100}, "already in use on the SDP", id="in-use-on-the-far-end"),
+        pytest.param({"sdp_vlan_1": 1700}, None, id="in-use-elsewhere-only"),
+    ],
+)
+def test_sdp_vlan_form_validates_against_the_sdp(values: dict, message: str | None) -> None:
+    form = forms.sdp_vlan_form(_PATH_TOPOLOGY, [_SDP_AB, _SDP_BC], {}, _IN_USE)
+    if message is None:
+        assert form(**values) is not None
+    else:
+        with pytest.raises(ValueError, match=message):
+            form(**values)
+
+
+def test_sdp_vlan_form_titles_each_field_with_its_sdp_and_prefills_by_sdp() -> None:
+    # Path order B <-> C then A <-> B: the prefill must follow the SDP, not the position.
+    form = forms.sdp_vlan_form(_PATH_TOPOLOGY, [_SDP_BC, _SDP_AB], {_SDP_AB: 1700}, _IN_USE)
+    properties = form.model_json_schema()["properties"]
+
+    assert properties["sdp_vlan_1"]["title"] == "VLAN on B <-> C"
+    assert properties["sdp_vlan_1"]["default"] is None
+    assert properties["sdp_vlan_2"]["title"] == "VLAN on A <-> B"
+    assert properties["sdp_vlan_2"]["default"] == 1700
+    # The description lists what is still free: the common range minus what either end holds.
+    assert "free: 2000-2099,2101-2999" in properties["sdp_vlan_1"]["description"]
+    assert "free: 1500-1599,1601-1999" in properties["sdp_vlan_2"]["description"]
+
+
+def test_sdp_vlan_input_skips_the_page_without_included_sdps() -> None:
+    generator = forms.sdp_vlan_input(_PATH_TOPOLOGY, [], {}, {})
+    with pytest.raises(StopIteration) as stop:
+        next(generator)
+    assert stop.value.value == {}
+
+
+def test_sdp_vlan_input_returns_the_pinned_vlans_by_sdp() -> None:
+    generator = forms.sdp_vlan_input(_PATH_TOPOLOGY, [_SDP_AB, _SDP_BC], {}, {})
+    form = next(generator)
+    with pytest.raises(StopIteration) as stop:
+        generator.send(form.model_validate({"sdp_vlan_2": 2100}))
+    assert stop.value.value == {_SDP_BC: 2100}

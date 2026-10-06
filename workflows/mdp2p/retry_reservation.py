@@ -41,16 +41,17 @@ from products.services.description import description
 from settings import settings
 from workflows.mdp2p.create_mdp2p import process_reservation_result, reserve_connection
 from workflows.mdp2p.shared.forms import (
-    CONNECTION_SUMMARY_FIELDS,
+    SdpVlans,
     connection_form,
-    path_summary,
-    sdp_block_for,
+    fetch_vlans_in_use,
+    include_constraints,
+    path_input,
     sdp_topology,
     stp_block_for,
 )
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
 from workflows.mdp2p.terminate_mdp2p import terminate_connection
-from workflows.shared import create_summary_form, raise_form_validation_error
+from workflows.shared import raise_form_validation_error
 
 logger = structlog.get_logger(__name__)
 
@@ -68,9 +69,14 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
 
     source, destination = vc.saps
     topology = sdp_topology()
+    # This subscription's own failed reservation holds its VLANs, on the endpoints and the SDPs, until
+    # the terminate step runs; leave it out or the user cannot keep the VLANs they already had.
+    in_use_by_stp = fetch_vlans_in_use(released_connection_id=vc.connection_id)
+    included = [constraint for constraint in vc.sdp_constraints if constraint.constraint_type == ConstraintType.INCLUDE]
     form = connection_form(
         "Retry reservation",
         topology,
+        in_use_by_stp,
         defaults={
             "circuit_description": vc.circuit_description,
             "service_speed": vc.service_speed,
@@ -78,29 +84,22 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
             "source_vlan": int(source.vlan),
             "destination_stp": destination.stp.stp_id,
             "destination_vlan": int(destination.vlan),
-            "include_sdps": [
-                str(constraint.sdp.owner_subscription_id)
-                for constraint in vc.sdp_constraints
-                if constraint.constraint_type == ConstraintType.INCLUDE
-            ],
+            "include_sdps": [str(constraint.sdp.owner_subscription_id) for constraint in included],
         },
-        # This subscription's own failed reservation holds its VLANs until the terminate step runs,
-        # so release them here or the user cannot keep the VLAN they already had.
-        released_vlans={int(source.vlan), int(destination.vlan)},
     )
 
     user_input = yield form
     user_input_dict: State = user_input.model_dump()
-
-    summary_input = user_input_dict | {"path": path_summary(topology, user_input_dict["include_sdps"])}
-    # A single column, not modify_summary_form's before/after: these are not VC attributes, and the
-    # "before" is the reservation that just failed.
-    yield from create_summary_form(summary_input, subscription.product.name, CONNECTION_SUMMARY_FIELDS)
-
-    ero = topology.ero(
-        str(user_input_dict["source_stp"]), str(user_input_dict["destination_stp"]), user_input_dict["include_sdps"]
-    )
-    return user_input_dict | {"subscription": subscription, "ero": ero}
+    # Keyed by SDP, so a VLAN follows its SDP when the user reorders or drops others.
+    stored_vlans = {
+        str(constraint.sdp.owner_subscription_id): constraint.vlan
+        for constraint in included
+        if constraint.vlan is not None
+    }
+    # The summary is create's single column, not modify_summary_form's before/after: these are not
+    # VC attributes, and the "before" is the reservation that just failed.
+    path = yield from path_input(topology, user_input_dict, in_use_by_stp, subscription.product.name, stored_vlans)
+    return user_input_dict | path | {"subscription": subscription}
 
 
 @step("Process terminate result")
@@ -121,6 +120,7 @@ def update_subscription(
     destination_stp: str,
     destination_vlan: int,
     include_sdps: list[str],
+    sdp_vlans: SdpVlans,
 ) -> State:
     subscription_id = subscription.subscription_id
     vc = subscription.vc
@@ -134,12 +134,7 @@ def update_subscription(
             subscription_id=subscription_id, vlan=str(destination_vlan), stp=stp_block_for(destination_stp)
         ),
     ]
-    vc.sdp_constraints = [
-        SdpConstraintBlockProvisioning.new(
-            subscription_id=subscription_id, constraint_type=ConstraintType.INCLUDE, sdp=sdp_block_for(sdp_id)
-        )
-        for sdp_id in include_sdps
-    ]
+    vc.sdp_constraints = include_constraints(SdpConstraintBlockProvisioning, subscription_id, include_sdps, sdp_vlans)
     # The aggregator dedups on globalReservationId before it reads the criteria, so reusing the old
     # one would hand back the old failed connection and quietly ignore every correction above.
     vc.global_reservation_id = f"urn:uuid:{uuid4()}"

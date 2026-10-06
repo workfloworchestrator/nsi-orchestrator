@@ -35,6 +35,9 @@ product_blocks:
         type: ServiceDemarcationPoint
         description: "The SDP the constraint refers to"
         required: provisioning
+      - name: vlan
+        type: int
+        description: "The VLAN to use on the SDP, or empty to let the PCE choose"
   - name: vc
     type: VirtualCircuit
     tag: VC

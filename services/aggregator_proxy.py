@@ -70,8 +70,20 @@ class AggregatorCriteria(BaseModel):
     p2ps: AggregatorP2ps
 
 
+class AggregatorSegment(BaseModel):
+    """One child connection along a reservation's path; only its STPs are modelled."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    source_stp: str | None = Field(default=None, alias="sourceSTP")
+    dest_stp: str | None = Field(default=None, alias="destSTP")
+
+
 class AggregatorReservation(BaseModel):
-    """A reservation as returned by ``GET /reservations/{connectionId}`` and in callbacks."""
+    """A reservation as returned by ``GET /reservations/{connectionId}`` and in callbacks.
+
+    ``segments`` is only filled when the list was requested with ``detail=full``.
+    """
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
 
@@ -81,6 +93,7 @@ class AggregatorReservation(BaseModel):
     global_reservation_id: str | None = None
     last_error: str | None = None
     criteria: AggregatorCriteria | None = None
+    segments: list[AggregatorSegment] | None = None
 
 
 def _client() -> httpx2.Client:
@@ -132,7 +145,8 @@ def reserve(
     """Reserve a connection and return the aggregator-assigned ``connectionId``.
 
     The ``source_stp`` / ``dest_stp`` strings must already carry their VLAN (``...?vlan=<n>``).
-    ``ero`` is the ordered list of intermediate STPs the path must traverse, without their VLAN.
+    ``ero`` is the ordered list of intermediate STPs the path must traverse; each may carry a
+    ``?vlan=<n>`` to pin the VLAN on that SDP, or none to let the PCE choose.
     The final RESERVED/FAILED status arrives later via the callback to ``callback_url``.
     """
     p2ps: dict[str, Any] = {"capacity": capacity, "sourceSTP": source_stp, "destSTP": dest_stp}
@@ -173,7 +187,11 @@ def get_reservation(connection_id: str) -> AggregatorReservation:
     return AggregatorReservation.model_validate(response.json())
 
 
-def list_reservations() -> list[AggregatorReservation]:
-    """Return all reservations the aggregator knows about."""
-    response = _request("GET", "/reservations")
+def list_reservations(*, with_segments: bool = False) -> list[AggregatorReservation]:
+    """Return all reservations the aggregator knows about.
+
+    ``with_segments`` asks for ``detail=full``, which adds each reservation's child segments. The
+    proxy parses them from the query it makes anyway, so this costs no extra NSI round trip.
+    """
+    response = _request("GET", "/reservations?detail=full" if with_segments else "/reservations")
     return [AggregatorReservation.model_validate(item) for item in response.json()["reservations"]]

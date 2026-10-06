@@ -146,6 +146,7 @@ def test_list_reservations_parses_each_item(monkeypatch: pytest.MonkeyPatch) -> 
     def handler(request: httpx2.Request) -> httpx2.Response:
         assert request.method == "GET"
         assert request.url.path == "/reservations"
+        assert "detail" not in request.url.params
         return httpx2.Response(200, json={"reservations": [RESERVATION_JSON, RESERVATION_JSON]})
 
     _install_mock_transport(monkeypatch, handler)
@@ -156,6 +157,30 @@ def test_list_reservations_parses_each_item(monkeypatch: pytest.MonkeyPatch) -> 
     assert all(
         r.criteria is not None and r.criteria.p2ps.source_stp == "urn:ogf:network:a?vlan=100" for r in reservations
     )
+    assert all(r.segments is None for r in reservations)
+
+
+def test_list_reservations_with_segments_asks_for_full_detail(monkeypatch: pytest.MonkeyPatch) -> None:
+    segment = {
+        "order": 0,
+        "connectionId": "child-1",
+        "providerNSA": "urn:ogf:network:a:nsa",
+        "sourceSTP": "urn:ogf:network:a?vlan=100",
+        "destSTP": "urn:ogf:network:a:to-b?vlan=1800",
+    }
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        assert request.url.params["detail"] == "full"
+        return httpx2.Response(200, json={"reservations": [RESERVATION_JSON | {"segments": [segment]}]})
+
+    _install_mock_transport(monkeypatch, handler)
+
+    [reservation] = list_reservations(with_segments=True)
+
+    assert reservation.segments is not None
+    assert [(s.source_stp, s.dest_stp) for s in reservation.segments] == [
+        ("urn:ogf:network:a?vlan=100", "urn:ogf:network:a:to-b?vlan=1800")
+    ]
 
 
 def test_request_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:

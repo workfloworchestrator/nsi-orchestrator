@@ -19,10 +19,12 @@ from types import SimpleNamespace
 
 import pytest
 from orchestrator.core.types import SubscriptionLifecycle
+from pydantic_forms.exceptions import FormValidationError
 
 from products.product_types.mdp2p import MultiDomainPoint2Point
 from services import aggregator_proxy
 from services.aggregator_proxy import AggregatorReservation
+from tests import held_reservation
 from tests.workflows import (
     assert_awaiting_callback,
     assert_complete,
@@ -33,6 +35,7 @@ from tests.workflows import (
 )
 from tests.workflows.conftest import MDP2P_CREATE_FORM as _CREATE_FORM
 from tests.workflows.conftest import PATH_STPS
+from workflows.mdp2p.shared import forms
 
 
 def test_create_mdp2p(stp_subscriptions: dict[str, str], sdp_subscription: str, aggregator: None) -> None:
@@ -51,10 +54,27 @@ def test_create_mdp2p(stp_subscriptions: dict[str, str], sdp_subscription: str, 
     assert {sap.stp.stp_id for sap in subscription.vc.saps} == {"urn:stp1", "urn:stp2"}
 
 
+@pytest.mark.parametrize(
+    ("vlan_page", "stored_vlans", "expected_ero"),
+    [
+        pytest.param({}, [None, None], [PATH_STPS["a_to_b"], PATH_STPS["b_to_c"]], id="pce-chooses"),
+        pytest.param(
+            {"sdp_vlan_1": 1500},
+            [1500, None],
+            [f"{PATH_STPS['a_to_b']}?vlan=1500", PATH_STPS["b_to_c"]],
+            id="first-sdp-pinned",
+        ),
+    ],
+)
 def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
-    path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
+    path_subscriptions: dict[str, str],
+    aggregator: None,
+    monkeypatch: pytest.MonkeyPatch,
+    vlan_page: dict[str, int],
+    stored_vlans: list[int | None],
+    expected_ero: list[str],
 ) -> None:
-    """The user's SDP order must survive the DB round trip and reach the aggregator as an ERO."""
+    """The user's SDP order and VLANs must survive the DB round trip and reach the aggregator as an ERO."""
     captured: dict = {}
 
     def fake_reserve(**kwargs: object) -> str:
@@ -63,16 +83,9 @@ def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
 
     monkeypatch.setattr(aggregator_proxy, "reserve", fake_reserve)
 
-    form = _CREATE_FORM | {
-        "source_stp": PATH_STPS["source"],
-        "source_vlan": 1001,
-        "destination_stp": PATH_STPS["destination"],
-        "destination_vlan": 1002,
-        "allow_stps_in_sdp": False,
-        "include_sdps": [path_subscriptions["A <-> B"], path_subscriptions["B <-> C"]],
-    }
+    form = _path_form(path_subscriptions["A <-> B"], path_subscriptions["B <-> C"])
     result, process, step_log = run_workflow(
-        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {}]
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, vlan_page, {}]
     )
     assert_awaiting_callback(result)
     result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-1"})
@@ -82,9 +95,10 @@ def test_create_mdp2p_stores_and_sends_the_ero_in_path_order(
     constraints = subscription.vc.sdp_constraints
     assert [constraint.sdp.sdp_name for constraint in constraints] == ["A <-> B", "B <-> C"]
     assert {constraint.constraint_type for constraint in constraints} == {"INCLUDE"}
+    assert [constraint.vlan for constraint in constraints] == stored_vlans
 
     # One STP per SDP, each the end facing the source, in the order the user chose.
-    assert captured["ero"] == [PATH_STPS["a_to_b"], PATH_STPS["b_to_c"]]
+    assert captured["ero"] == expected_ero
 
 
 @pytest.fixture
@@ -137,11 +151,78 @@ def test_retry_reservation_terminates_the_old_connection_and_reserves_again(
     assert after.global_reservation_id != before.global_reservation_id
 
 
+def test_retry_reservation_prefills_sdp_vlans_by_sdp(
+    path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A VLAN pinned on create follows its SDP into the retry form, even when the order changes."""
+    from workflows.mdp2p import retry_reservation
+
+    sdp_ab, sdp_bc = path_subscriptions["A <-> B"], path_subscriptions["B <-> C"]
+    form = _path_form(sdp_ab, sdp_bc)
+    result, process, step_log = run_workflow(
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {"sdp_vlan_2": 1600}, {}]
+    )
+    result, _ = resume_callback(process, step_log, {"status": "FAILED", "connectionId": "conn-1"})
+    subscription_id = str(extract_state(result)["subscription_id"])
+
+    # The failed connection still holds its VLANs, on the endpoints and on the SDP, until retry
+    # terminates it; retry must leave it out so they can be kept.
+    failed = _path_reservation("FAILED", "conn-1", [(PATH_STPS["b_to_c"], PATH_STPS["c_to_b"], 1600)])
+    monkeypatch.setattr(forms, "list_reservations", lambda **_kwargs: [failed])
+
+    generator = retry_reservation.initial_input_form_generator(subscription_id)
+    connection_form = next(generator)
+    vlan_form = generator.send(connection_form(**(form | {"include_sdps": [sdp_bc]})))
+
+    # B <-> C is now first, and keeps the VLAN it was pinned to as the second SDP.
+    assert vlan_form.model_json_schema()["properties"]["sdp_vlan_1"]["default"] == 1600
+    assert vlan_form(sdp_vlan_1=1600) is not None
+
+
+def test_create_mdp2p_rejects_a_vlan_in_use_on_an_included_sdp(
+    path_subscriptions: dict[str, str], aggregator: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A VLAN another of our reservations holds on the SDP is refused before the workflow starts."""
+    # Other edge VLANs, so only the SDP clashes.
+    held = _path_reservation("RESERVED", "other", [(PATH_STPS["a_to_b"], PATH_STPS["b_to_a"], 1500)], (1100, 1200))
+    monkeypatch.setattr(forms, "list_reservations", lambda **_kwargs: [held])
+    form = _path_form(path_subscriptions["A <-> B"])
+
+    with pytest.raises(FormValidationError, match="already in use on the SDP"):
+        run_workflow(
+            "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {"sdp_vlan_1": 1500}, {}]
+        )
+
+
+def _path_form(*include_sdps: str) -> dict[str, object]:
+    """The create form between the path's edges, through ``include_sdps`` in that order."""
+    return _CREATE_FORM | {
+        "source_stp": PATH_STPS["source"],
+        "source_vlan": 1001,
+        "destination_stp": PATH_STPS["destination"],
+        "destination_vlan": 1002,
+        "allow_stps_in_sdp": False,
+        "include_sdps": list(include_sdps),
+    }
+
+
+def _path_reservation(
+    status: str, connection_id: str, sdps: list[tuple[str, str, int]], edge_vlans: tuple[int, int] = (1001, 1002)
+) -> AggregatorReservation:
+    """A reservation between the path's edges crossing ``sdps``; by default on ``_path_form``'s VLANs."""
+    source_vlan, destination_vlan = edge_vlans
+    return held_reservation(
+        status,
+        f"{PATH_STPS['source']}?vlan={source_vlan}",
+        f"{PATH_STPS['destination']}?vlan={destination_vlan}",
+        connection_id=connection_id,
+        sdps=sdps,
+    )
+
+
 @pytest.mark.parametrize("state", ["RESERVED", "ACTIVATED"])
 def test_retry_reservation_refuses_a_live_connection(mdp2p_subscription: str, state: str) -> None:
     """Retrying tears the connection down, so it must be unreachable while one is actually held."""
-    from pydantic_forms.exceptions import FormValidationError
-
     from workflows.mdp2p import retry_reservation
 
     subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
