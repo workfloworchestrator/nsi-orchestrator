@@ -118,9 +118,6 @@ def vlans_in_use_by_stp(released_connection_id: str | None = None) -> dict[str, 
     reservation holds its VLANs in every state except ``TERMINATED`` (a ``FAILED`` reservation only
     releases them once terminated), so terminated reservations are excluded, as is
     ``released_connection_id``, a connection that is about to be terminated and reserved again.
-
-    The aggregator only reports this requester's reservations, so a VLAN held by another requester
-    is not in the map.
     """
     held = (
         reservation
@@ -284,8 +281,7 @@ def sdp_vlan_form(
                 defaults.get(sdp_id),
                 title=f"VLAN on {topology.names[sdp_id]}",
                 description=(
-                    f"Optional, free as far as this orchestrator can see: {available_vlan_ranges(allowed, in_use)}; "
-                    "leave empty to let the PCE choose"
+                    f"Optional, free: {available_vlan_ranges(allowed, in_use)}; leave empty to let the PCE choose"
                 ),
             ),
         )

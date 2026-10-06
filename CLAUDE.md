@@ -178,8 +178,7 @@ Both need the pgvector extension.
   `queryNotificationSync` per live reservation. The list asks for `detail=full` because the SDP
   VLANs are only in the child segments; that costs the proxy no extra NSI call. Retry passes its own
   `connection_id` as `released_connection_id`: the failed reservation holds its VLANs until the
-  terminate step, and the user must be able to keep them. Only this requester's reservations are
-  visible, so "free" means free as far as this orchestrator can see.
+  terminate step, and the user must be able to keep them.
 - **The ERO only has any effect under the `sequential` or `tree` PCE algorithm.** `chainPCE` is
   `reachabilityPCE` alone, which copies the ERO to every child segment without computing against it.
   nsi-safnari defaults to `chain`; the ANA deployment runs `SEQUENTIAL`.

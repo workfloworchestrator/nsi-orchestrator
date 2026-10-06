@@ -337,8 +337,8 @@ def test_sdp_vlan_form_titles_each_field_with_its_sdp_and_prefills_by_sdp() -> N
     assert properties["sdp_vlan_2"]["title"] == "VLAN on A <-> B"
     assert properties["sdp_vlan_2"]["default"] == 1700
     # The description lists what is still free: the common range minus what either end holds.
-    assert "free as far as this orchestrator can see: 2000-2099,2101-2999" in properties["sdp_vlan_1"]["description"]
-    assert "free as far as this orchestrator can see: 1500-1599,1601-1999" in properties["sdp_vlan_2"]["description"]
+    assert "free: 2000-2099,2101-2999" in properties["sdp_vlan_1"]["description"]
+    assert "free: 1500-1599,1601-1999" in properties["sdp_vlan_2"]["description"]
 
 
 def test_sdp_vlan_input_skips_the_page_without_included_sdps() -> None:
