@@ -19,10 +19,10 @@ part of an SDP are shown but labelled, and gated behind a checkbox (see ``create
 are included, a second page asks for an optional VLAN on each.
 """
 
-from collections.abc import Generator, Iterator
+from collections.abc import Generator
 from dataclasses import dataclass
 from functools import cached_property
-from itertools import chain, groupby
+from itertools import chain
 from typing import Annotated, Any, cast
 from uuid import UUID
 
@@ -44,9 +44,17 @@ from products.product_blocks.sdp import ServiceDemarcationPointBlock
 from products.product_blocks.sdp_constraint import ConstraintType, SdpConstraintBlockInactive
 from products.product_blocks.stp import ServiceTerminationPointBlock
 from products.product_types.sdp import ServiceDemarcationPoint
-from products.product_types.stp import ServiceTerminationPoint
-from services.aggregator_proxy import AggregatorReservation, list_reservations
+from services.aggregator_proxy import list_reservations
+from workflows.mdp2p.shared import vlans
 from workflows.mdp2p.shared.ero import ero_stps
+from workflows.mdp2p.shared.vlans import (
+    collapse_ranges,
+    group_by_stp,
+    held_reservations,
+    reservations_vlan_pairs,
+    vlan_ranges,
+    vlan_set,
+)
 from workflows.sdp.shared.forms import stp_block_for, subscribed_sdp_pairs
 from workflows.shared import create_summary_form, fetch_for_form, subscription_ids_for_product_type
 
@@ -57,42 +65,14 @@ Vlan = Annotated[int, Ge(1), Le(4094)]
 SdpVlans = dict[str, int]
 
 
-def vlan_ranges(spec: str) -> list[tuple[int, int]]:
-    """Parse a comma-separated VLAN spec into ``(low, high)`` ranges.
-
-    ``spec`` is the NML form used by both the DDS label group and a reserved STP: a comma-separated
-    list of single VLANs and ranges, e.g. ``"1000-1999"`` or ``"100,200-300"``.
-    """
-
-    def bounds(part: str) -> tuple[int, int]:
-        low, _, high = part.partition("-")
-        return int(low), int(high or low)
-
-    return [bounds(part.strip()) for part in spec.split(",") if part.strip()]
-
-
-def vlan_set(spec: str) -> set[int]:
-    """Every VLAN a ``vlan_ranges`` spec covers."""
-    return {vlan for low, high in vlan_ranges(spec) for vlan in range(low, high + 1)}
-
-
 def vlan_in_label_group(vlan: int, label_group: str) -> bool:
     """True if ``vlan`` falls within an STP's advertised VLAN ranges."""
     return any(low <= vlan <= high for low, high in vlan_ranges(label_group))
 
 
-def _collapse_ranges(values: list[int]) -> str:
-    """Collapse a sorted list of ints into a compact range string, e.g. ``[1, 2, 3, 5] -> "1-3,5"``."""
-    runs = [
-        [value for _, value in group]
-        for _, group in groupby(enumerate(values), key=lambda index_value: index_value[1] - index_value[0])
-    ]
-    return ",".join(f"{run[0]}" if run[0] == run[-1] else f"{run[0]}-{run[-1]}" for run in runs)
-
-
 def _free_ranges(allowed: set[int], in_use: set[int]) -> str:
     """``allowed`` minus ``in_use`` as a compact range string."""
-    return _collapse_ranges(sorted(allowed - in_use)) or "none available"
+    return collapse_ranges(sorted(allowed - in_use)) or "none available"
 
 
 def available_vlan_ranges(label_group: str, in_use: set[int]) -> str:
@@ -102,10 +82,7 @@ def available_vlan_ranges(label_group: str, in_use: set[int]) -> str:
 
 def subscribed_stps() -> list[ServiceTerminationPointBlock]:
     """The STP product blocks of all non-terminated STP subscriptions."""
-    return [
-        ServiceTerminationPoint.from_subscription(sid).stp
-        for sid in subscription_ids_for_product_type("ServiceTerminationPoint")
-    ]
+    return vlans.subscribed_stps()
 
 
 def stps_used_in_sdp() -> set[str]:
@@ -113,35 +90,19 @@ def stps_used_in_sdp() -> set[str]:
     return {stp_id for pair in subscribed_sdp_pairs() for stp_id in pair}
 
 
-def _endpoint_vlan_pairs(endpoint: str) -> Iterator[tuple[str, int]]:
-    """Yield ``(stp_id, vlan)`` for every VLAN an endpoint string (``<stp>?vlan=<spec>``) holds."""
-    stp_id, _, vlan_spec = endpoint.partition("?vlan=")
-    return ((stp_id, vlan) for vlan in vlan_set(vlan_spec))
-
-
-def _reservation_endpoints(reservation: AggregatorReservation) -> Iterator[str]:
-    """The STPs a reservation holds a VLAN on: its own two ends and both ends of every child segment."""
-    own = [reservation.criteria.p2ps.source_stp, reservation.criteria.p2ps.dest_stp] if reservation.criteria else []
-    segments = chain.from_iterable((segment.source_stp, segment.dest_stp) for segment in reservation.segments or [])
-    return (stp for stp in chain(own, segments) if stp is not None)
-
-
 def vlans_in_use_by_stp(released_connection_id: str | None = None) -> dict[str, set[int]]:
     """VLANs currently held per STP id, parsed from the aggregator's reservations.
 
-    The child segments put the SDPs along each path in the map, not only the endpoints. A
-    reservation holds its VLANs in every state except ``TERMINATED`` (a ``FAILED`` reservation only
-    releases them once terminated), so terminated reservations are excluded, as is
-    ``released_connection_id``, a connection that is about to be terminated and reserved again.
+    The child segments put the SDPs along each path in the map, not only the endpoints. See
+    ``held_reservations`` for which reservations count. ``released_connection_id`` is a connection
+    about to be terminated and reserved again, so its VLANs are offered as free.
     """
     held = (
         reservation
-        for reservation in list_reservations(with_segments=True)
-        if reservation.status != "TERMINATED" and reservation.connection_id != released_connection_id
+        for reservation in held_reservations(list_reservations(with_segments=True))
+        if reservation.connection_id != released_connection_id
     )
-    endpoints = chain.from_iterable(_reservation_endpoints(reservation) for reservation in held)
-    pairs = sorted(chain.from_iterable(_endpoint_vlan_pairs(endpoint) for endpoint in endpoints))
-    return {stp_id: {vlan for _, vlan in group} for stp_id, group in groupby(pairs, key=lambda pair: pair[0])}
+    return group_by_stp(reservations_vlan_pairs(held))
 
 
 def fetch_vlans_in_use(released_connection_id: str | None = None) -> dict[str, set[int]]:
@@ -277,7 +238,7 @@ def sdp_vlan_form(
                 return None
             if vlan not in allowed:
                 raise ValueError(
-                    f"must be a VLAN both ends of the SDP allow ({_collapse_ranges(sorted(allowed)) or 'none'})"
+                    f"must be a VLAN both ends of the SDP allow ({collapse_ranges(sorted(allowed)) or 'none'})"
                 )
             if vlan in in_use:
                 raise ValueError("is already in use on the SDP")

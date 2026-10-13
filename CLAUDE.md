@@ -55,6 +55,22 @@ Both need the pgvector extension.
   automation UI) also lands in it. The list applies to the reservation-without-subscription direction
   only: a subscription whose reservation vanished is a different, more serious fault and must not be
   silenced by an id that was once an accepted orphan.
+  `validate_upas_against_vlans.py` compares the VLANs each uPA holds with the VLANs the aggregator's
+  reservations hold (the same view `vlans_in_use_by_stp` gives the create form). The uPAs come from
+  the aggregator-proxy's `GET /providers`, so the peering rule lives only in the proxy; each is asked
+  through `/providers/{nsaId}/reservations`, which queries it as the aggregator. Only subscribed STPs
+  and VLANs within their DDS `label_group` count; everything else on a uPA is not ours to administer.
+  A uPA reservation holds its VLAN by SuPA's own rule (`job/reserve.py`): lifecycle not
+  `Failed`/`PassedEndTime`/`Terminated` and reservation `ReserveHeld`/`Committing`/`Start`. That
+  differs from the aggregator side on purpose: a `FAILED` aggregator reservation keeps its VLANs
+  until terminated, but SuPA frees them at once, so those pairs get their own report section
+  instead of showing as missing on the uPA. A uPA reservation is not filtered on `requesterNSA`, so
+  a VLAN another requester holds on one of our STPs is reported too: the create form would offer it.
+  A proxy outage is left to propagate, so it ends as plain `failed` rather than as drift.
+- `workflows/mdp2p/shared/vlans.py` — the VLAN accounting both the MDP2P forms and that task use:
+  VLAN spec parsing, `subscribed_stps`, and which `(stp_id, vlan)` pairs aggregator and uPA
+  reservations hold (both rules side by side). It imports no form machinery, so a system task can
+  use it without loading the form stack.
 - `schedules.py` — this project's cron entries, registered through core's schedule API by the
   `scheduler load-project-schedule` command that `main.py` attaches to core's `scheduler` sub-app.
   It runs as its own scheduler init container, after the one that loops on `load-initial-schedule`
@@ -140,11 +156,12 @@ Both need the pgvector extension.
   The predicate counts `failed` / `inconsistent_data` / `api_unavailable` as uncompleted, and
   `task_clean_up_tasks` only reaps `completed`, so the first failure would block every later run —
   silently, logged at INFO by the scheduler. A nightly cron cannot overlap a task that takes seconds.
-- **Raise `AssertionError` for drift, not `InconsistentDataError`.** Only the former reaches
-  `ProcessStatus.INCONSISTENT_DATA` (and the NOC assignee): core's mapping at
-  `services/processes.py` compares the error class name against the literal `"InconsistentData"`,
-  while `errors.py` writes `type(err).__name__`, i.e. `"InconsistentDataError"` — so that branch is
-  dead. A proxy `RuntimeError` (`DdsProxyError` / `AggregatorProxyError`) lands in plain `failed`.
+- **Raise `InconsistentDataError` for drift, not `AssertionError`.** Since orchestrator-core 5.4.0
+  (#1882) `_default_process_func` in `services/processes.py` maps only `InconsistentDataError` to
+  `ProcessStatus.INCONSISTENT_DATA`; an `AssertionError` lands in plain `failed`, and the default
+  handler no longer sets a NOC assignee at all. Before 5.4.0 it was the other way round. A proxy
+  `RuntimeError` (`DdsProxyError` / `AggregatorProxyError`) lands in plain `failed` too.
+  `validate_upas_against_vlans` follows this; the older validators still raise `AssertionError`.
 
 ## Gotchas
 
