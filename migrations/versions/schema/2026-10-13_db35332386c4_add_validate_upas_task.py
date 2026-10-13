@@ -31,7 +31,7 @@ depends_on = None
 new_tasks = [
     {
         "name": "task_validate_upas_against_vlans",
-        "description": "Validate uPA VLANs against the orchestrator",
+        "description": "Validate uPA VLANs against the aggregator",
     },
 ]
 
