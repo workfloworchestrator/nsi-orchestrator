@@ -107,12 +107,20 @@ def subscription_id_for_value(product_type: str, resource_type: str, value: str)
     return result
 
 
+def _values_to(column: Any, product_type: str, resource_type: str) -> dict[str, Any]:
+    """Map each ``resource_type`` value to ``column`` of its subscription (non-terminated ``product_type``)."""
+    query = _value_select(SubscriptionInstanceValueTable.value, product_type, resource_type).add_columns(column)
+    return dict(db.session.execute(query).tuples().all())
+
+
+def subscription_ids_for_values(product_type: str, resource_type: str) -> dict[str, UUID]:
+    """Map each ``resource_type`` value to its subscription id (non-terminated ``product_type``)."""
+    return _values_to(SubscriptionTable.subscription_id, product_type, resource_type)
+
+
 def subscription_descriptions_for_values(product_type: str, resource_type: str) -> dict[str, str]:
     """Map each ``resource_type`` value to its subscription description (non-terminated ``product_type``)."""
-    query = _value_select(SubscriptionInstanceValueTable.value, product_type, resource_type).add_columns(
-        SubscriptionTable.description
-    )
-    return {value: description for value, description in db.session.execute(query).all()}
+    return _values_to(SubscriptionTable.description, product_type, resource_type)
 
 
 def subscription_ids_for_product_type(product_type: str) -> list[UUID]:

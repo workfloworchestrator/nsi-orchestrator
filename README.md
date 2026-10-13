@@ -359,7 +359,10 @@ Alongside the per-subscription validators, two system tasks run on a schedule:
   that the orchestrator does not know about (e.g. after an error that never reached the aggregator),
   VLANs the orchestrator uses that no uPA holds, and, separately, VLANs held only by a `FAILED`
   aggregator reservation that the uPA has already released and VLANs held outside the STP's current
-  DDS range (left over from before a range change, since a uPA only grants VLANs within it). The uPAs
+  DDS range (left over from before a range change, since a uPA only grants VLANs within it). Each
+  finding names the reservation holding the VLANs: the uPA's connection id, or the aggregator's
+  connection id, the child connection id of the segment (the id the uPA knows it by) and the MDP2P
+  subscription id; plus the global reservation id. The same findings are in the step's `details`. The uPAs
   are the ones the aggregator-proxy lists at `GET /providers` (those in the aggregator's DDS
   `peersWith`); STPs on a network none of them serves are listed as unchecked. Findings end the run
   as `inconsistent_data`; an unreachable proxy as plain `failed`. Needs nsi-aggregator-proxy's

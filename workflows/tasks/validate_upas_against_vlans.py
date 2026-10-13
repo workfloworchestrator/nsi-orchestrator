@@ -15,7 +15,10 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 from itertools import chain
+from typing import Literal
+from uuid import UUID
 
 import structlog
 from orchestrator.core.utils.errors import InconsistentDataError
@@ -28,15 +31,19 @@ from services.aggregator_proxy import AggregatorReservation, Upa, UpaReservation
 from workflows.mdp2p.shared.ero import network_of
 from workflows.mdp2p.shared.fsm import ConnectionState
 from workflows.mdp2p.shared.vlans import (
+    Holder,
     StpVlan,
     collapse_ranges,
-    group_by_stp,
+    group_pairs,
     held_reservations,
+    reservation_held_vlans,
     reservations_vlan_pairs,
     subscribed_stps,
+    upa_held_vlans,
     upa_vlan_pairs,
     vlan_set,
 )
+from workflows.shared import subscription_ids_for_values
 
 logger = structlog.get_logger(__name__)
 
@@ -68,12 +75,58 @@ def _split(ranges: dict[str, set[int]], pairs: set[StpVlan]) -> tuple[set[StpVla
     return inside, checked - inside
 
 
-def _report(sections: dict[str, set[StpVlan]]) -> str:
-    return "\n".join(
-        f"  {title}:\n" + "\n".join(f"    {stp_id}: VLAN {collapse_ranges(sorted(vlans))}" for stp_id, vlans in by_stp)
-        for title, pairs in sections.items()
-        if (by_stp := group_by_stp(pairs).items())
+@dataclass(frozen=True)
+class Finding:
+    """The VLANs one reservation holds on one STP, with the ids to search for it."""
+
+    stp_id: str
+    vlans: str
+    side: Literal["aggregator", "uPA"]
+    connection_id: str
+    child_connection_id: str | None
+    global_reservation_id: str | None
+    subscription_id: str | None
+
+    def line(self) -> str:
+        subscription = f"subscription {self.subscription_id}" if self.subscription_id else "no subscription"
+        ids = [
+            f"{self.side} connection {self.connection_id}",
+            f"child {self.child_connection_id}" if self.child_connection_id else None,
+            subscription if self.side == "aggregator" else None,
+            f"global reservation {self.global_reservation_id}" if self.global_reservation_id else None,
+        ]
+        return f"    {self.stp_id}: VLAN {self.vlans} ({', '.join(filter(None, ids))})"
+
+
+def _holders(
+    aggregator_reservations: list[AggregatorReservation], upa_reservations: list[UpaReservation]
+) -> dict[StpVlan, set[Holder]]:
+    """Every reservation, at the aggregator or a uPA, holding each ``(stp_id, vlan)`` pair."""
+    return group_pairs(
+        chain(
+            chain.from_iterable(map(reservation_held_vlans, aggregator_reservations)),
+            chain.from_iterable(map(upa_held_vlans, upa_reservations)),
+        )
     )
+
+
+def _findings(
+    pairs: set[StpVlan], holders: dict[StpVlan, set[Holder]], subscriptions: dict[str, UUID]
+) -> list[Finding]:
+    """One finding per STP and holder, with that holder's VLANs on the STP collapsed into ranges."""
+    by_stp_and_holder = group_pairs(
+        (((stp_id, holder), vlan) for stp_id, vlan in pairs for holder in holders[(stp_id, vlan)]),
+        sort_key=lambda key: (key[0], key[1].connection_id, key[1].child_connection_id or ""),
+    )
+    return [
+        Finding(
+            stp_id=stp_id,
+            vlans=collapse_ranges(sorted(vlans)),
+            subscription_id=str(subscriptions[holder.connection_id]) if holder.connection_id in subscriptions else None,
+            **asdict(holder),
+        )
+        for (stp_id, holder), vlans in by_stp_and_holder.items()
+    ]
 
 
 @step("Compare uPA VLANs against the orchestrator")
@@ -97,7 +150,12 @@ def compare_upa_vlans() -> State:
         "held outside the STP's current DDS range": upa_outside | in_use_outside,
     }
     if any(sections.values()):
-        raise InconsistentDataError("uPA VLANs and the orchestrator disagree:\n" + _report(sections))
+        holders = _holders(held, upa_reservations)
+        subscriptions = subscription_ids_for_values("MultiDomainPoint2Point", "connection_id")
+        findings = {title: _findings(pairs, holders, subscriptions) for title, pairs in sections.items() if pairs}
+        report = "\n".join(f"  {title}:\n" + "\n".join(f.line() for f in found) for title, found in findings.items())
+        details = {title: [asdict(f) for f in found] for title, found in findings.items()}
+        raise InconsistentDataError("uPA VLANs and the orchestrator disagree:\n" + report, details)
 
     logger.info("uPA VLANs match the orchestrator", upas=len(upas), vlans=len(upa))
     return {

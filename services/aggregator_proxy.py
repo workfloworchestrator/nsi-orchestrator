@@ -72,10 +72,11 @@ class AggregatorCriteria(BaseModel):
 
 
 class AggregatorSegment(BaseModel):
-    """One child connection along a reservation's path; only its STPs are modelled."""
+    """One child connection along a reservation's path: its id at its uPA, and its STPs."""
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
 
+    connection_id: str | None = None
     source_stp: str | None = Field(default=None, alias="sourceSTP")
     dest_stp: str | None = Field(default=None, alias="destSTP")
 
@@ -110,12 +111,14 @@ class UpaReservation(BaseModel):
     """A reservation as a uPA itself reports it, from ``GET /providers/{nsaId}/reservations``.
 
     The states are the uPA's raw NSI sub-states, not the proxy's simplified status. A reservation
-    that never got past reserving carries no criteria, so its STPs are absent. Only the fields that
-    decide which VLANs it holds are modelled.
+    that never got past reserving carries no criteria, so its STPs are absent. Modelled are the
+    fields that decide which VLANs it holds, and the ids that name it in a report.
     """
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
 
+    connection_id: str
+    global_reservation_id: str | None = None
     reservation_state: str
     lifecycle_state: str
     source_stp: str | None = Field(default=None, alias="sourceSTP")

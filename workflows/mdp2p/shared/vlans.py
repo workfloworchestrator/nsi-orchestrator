@@ -16,8 +16,11 @@
 Shared by the MDP2P forms, which offer the free VLANs, and the nightly uPA check. No form imports.
 """
 
-from collections.abc import Iterable, Iterator
-from itertools import chain, groupby
+from collections.abc import Callable, Hashable, Iterable, Iterator
+from dataclasses import dataclass, replace
+from itertools import groupby
+from operator import itemgetter
+from typing import Any, Literal
 
 from products.product_blocks.stp import ServiceTerminationPointBlock
 from products.product_types.stp import ServiceTerminationPoint
@@ -25,6 +28,23 @@ from services.aggregator_proxy import AggregatorReservation, UpaReservation
 from workflows.shared import subscription_ids_for_product_type
 
 StpVlan = tuple[str, int]
+
+
+@dataclass(frozen=True)
+class Holder:
+    """Who holds a VLAN: a reservation at the aggregator or at a uPA, named by the ids to search for.
+
+    For an aggregator reservation ``child_connection_id`` is the segment holding the VLAN, which is
+    the id the segment's uPA reports; it is None on the reservation's own ends.
+    """
+
+    side: Literal["aggregator", "uPA"]
+    connection_id: str
+    child_connection_id: str | None = None
+    global_reservation_id: str | None = None
+
+
+HeldVlan = tuple[StpVlan, Holder]
 
 # SuPA's rule for a reservation that holds its VLANs (job/reserve.py, _stp_resources_in_use).
 _UPA_RELEASED_LIFECYCLE_STATES = {"Failed", "PassedEndTime", "Terminated"}
@@ -73,11 +93,28 @@ def endpoint_vlan_pairs(endpoint: str | None) -> Iterator[StpVlan]:
     return ((stp_id, vlan) for vlan in vlan_set(vlan_spec))
 
 
-def _reservation_endpoints(reservation: AggregatorReservation) -> Iterator[str]:
-    """The STPs a reservation holds a VLAN on: its own two ends and both ends of every child segment."""
-    own = [reservation.criteria.p2ps.source_stp, reservation.criteria.p2ps.dest_stp] if reservation.criteria else []
-    segments = chain.from_iterable((segment.source_stp, segment.dest_stp) for segment in reservation.segments or [])
-    return (stp for stp in chain(own, segments) if stp is not None)
+def _held(endpoints: Iterable[str | None], holder: Holder) -> Iterator[HeldVlan]:
+    return ((pair, holder) for endpoint in endpoints for pair in endpoint_vlan_pairs(endpoint))
+
+
+def reservation_held_vlans(reservation: AggregatorReservation) -> list[HeldVlan]:
+    """The VLANs one aggregator reservation holds: on every child segment and on its own two ends.
+
+    A path's ends are normally also the outer ends of its first and last segment; such a pair is
+    named once, by the segment, whose child connection id is what its uPA knows it by.
+    """
+    own = Holder("aggregator", reservation.connection_id, global_reservation_id=reservation.global_reservation_id)
+    segments = [
+        held
+        for segment in reservation.segments or []
+        for held in _held(
+            (segment.source_stp, segment.dest_stp), replace(own, child_connection_id=segment.connection_id)
+        )
+    ]
+    covered = {pair for pair, _ in segments}
+    p2ps = reservation.criteria.p2ps if reservation.criteria else None
+    ends = [held for held in _held((p2ps.source_stp, p2ps.dest_stp) if p2ps else (), own) if held[0] not in covered]
+    return segments + ends
 
 
 def held_reservations(reservations: Iterable[AggregatorReservation]) -> list[AggregatorReservation]:
@@ -90,26 +127,35 @@ def held_reservations(reservations: Iterable[AggregatorReservation]) -> list[Agg
 
 def reservations_vlan_pairs(reservations: Iterable[AggregatorReservation]) -> set[StpVlan]:
     """The ``(stp_id, vlan)`` pairs aggregator reservations hold, along their whole paths."""
-    endpoints = chain.from_iterable(_reservation_endpoints(reservation) for reservation in reservations)
-    return set(chain.from_iterable(endpoint_vlan_pairs(endpoint) for endpoint in endpoints))
+    return {pair for reservation in reservations for pair, _ in reservation_held_vlans(reservation)}
+
+
+def _upa_holds_vlans(reservation: UpaReservation) -> bool:
+    """SuPA's rule: unlike at the aggregator, a failed reservation releases its VLANs at once."""
+    return (
+        reservation.lifecycle_state not in _UPA_RELEASED_LIFECYCLE_STATES
+        and reservation.reservation_state in _UPA_HOLDING_RESERVATION_STATES
+    )
+
+
+def upa_held_vlans(reservation: UpaReservation) -> list[HeldVlan]:
+    """The VLANs one uPA reservation holds, by SuPA's own rule; none once it has released them."""
+    holder = Holder("uPA", reservation.connection_id, global_reservation_id=reservation.global_reservation_id)
+    ends = (reservation.source_stp, reservation.dest_stp) if _upa_holds_vlans(reservation) else ()
+    return list(_held(ends, holder))
 
 
 def upa_vlan_pairs(reservations: Iterable[UpaReservation]) -> set[StpVlan]:
-    """The ``(stp_id, vlan)`` pairs uPA reservations hold, by SuPA's own rule.
+    """The ``(stp_id, vlan)`` pairs uPA reservations hold, by SuPA's own rule."""
+    return {pair for reservation in reservations for pair, _ in upa_held_vlans(reservation)}
 
-    Unlike at the aggregator, a failed reservation releases its VLANs at once.
-    """
-    holding = (
-        reservation
-        for reservation in reservations
-        if reservation.lifecycle_state not in _UPA_RELEASED_LIFECYCLE_STATES
-        and reservation.reservation_state in _UPA_HOLDING_RESERVATION_STATES
-    )
-    endpoints = chain.from_iterable((reservation.source_stp, reservation.dest_stp) for reservation in holding)
-    return set(chain.from_iterable(endpoint_vlan_pairs(endpoint) for endpoint in endpoints))
+
+def group_pairs[K: Hashable, V](pairs: Iterable[tuple[K, V]], sort_key: Callable[[K], Any] = repr) -> dict[K, set[V]]:
+    """``(key, value)`` pairs as a map from each key to all its values, keys ordered by ``sort_key``."""
+    ordered = sorted(pairs, key=lambda pair: sort_key(pair[0]))
+    return {key: {value for _, value in group} for key, group in groupby(ordered, key=itemgetter(0))}
 
 
 def group_by_stp(pairs: Iterable[StpVlan]) -> dict[str, set[int]]:
-    """``(stp_id, vlan)`` pairs as a map from STP id to its VLANs."""
-    ordered = sorted(pairs)
-    return {stp_id: {vlan for _, vlan in group} for stp_id, group in groupby(ordered, key=lambda pair: pair[0])}
+    """``(stp_id, vlan)`` pairs as a map from STP id to its VLANs, ordered by STP id."""
+    return group_pairs(pairs, sort_key=str)

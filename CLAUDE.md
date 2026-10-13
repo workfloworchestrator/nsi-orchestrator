@@ -62,6 +62,13 @@ Both need the pgvector extension.
   count; everything else on a uPA is not ours to administer. Every VLAN on those STPs is compared,
   not only those in the DDS `label_group`: a uPA only grants VLANs within the STP's range, so one
   outside it predates a range change and gets its own report section instead of being invisible.
+  The comparison is over `(stp_id, vlan)` pairs; only once it finds drift are the pairs mapped back
+  to the reservations holding them (`vlans.Holder`), one `Finding` per STP and holder. A path's ends
+  are normally also its first and last segment's outer ends; `reservation_held_vlans` names such a
+  pair once, by the segment, whose child connection id is what the uPA knows. The findings go into
+  the error message and, structured, into the step's `details` (`InconsistentDataError`'s second
+  argument). In tests, run the task only once per test: a failed step rolls back the test's
+  transaction, including the seed subscriptions, so a second run sees none.
   A uPA reservation holds its VLAN by SuPA's own rule (`job/reserve.py`): lifecycle not
   `Failed`/`PassedEndTime`/`Terminated` and reservation `ReserveHeld`/`Committing`/`Start`. That
   differs from the aggregator side on purpose: a `FAILED` aggregator reservation keeps its VLANs
@@ -83,9 +90,11 @@ Both need the pgvector extension.
   `add_unique_scheduled_task_to_queue` is not safe for concurrent use. Times are staggered off core's
   00:10 / 02:30 and off the `:00`/`:30` marks. This is **not** the deprecated `@scheduler` decorator;
   it drives the same API the UI does.
-- `workflows/shared.py` — cross-product form helpers: `create_summary_form`/`modify_summary_form`,
-  `subscription_id_for_value`, `raise_form_validation_error`, and `fetch_for_form` (wraps a proxy
-  fetch so a proxy error surfaces as a `FormValidationError` instead of a crashed step).
+- `workflows/shared.py` — cross-product helpers: the form helpers `create_summary_form`/
+  `modify_summary_form`, `raise_form_validation_error` and `fetch_for_form` (wraps a proxy fetch so a
+  proxy error surfaces as a `FormValidationError` instead of a crashed step), and the subscription
+  lookups by resource value (`subscribed_values`, `subscription_id_for_value`, and the bulk
+  `subscription_ids_for_values`/`subscription_descriptions_for_values`), which tasks use too.
 - `services/` — `dds_proxy.py` and `aggregator_proxy.py` (httpx clients returning pydantic models);
   `edge_auth.py` factors the shared mTLS / dev-header `client_kwargs` both use.
 - `workflows/mdp2p/shared/fsm.py` — the python-statemachine connection FSM

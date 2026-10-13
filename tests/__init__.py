@@ -24,10 +24,16 @@ def held_reservation(
 ) -> AggregatorReservation:
     """A ``detail=full`` reservation between two ``<stp>?vlan=<n>`` ends, crossing ``sdps``.
 
-    Each SDP is ``(near end, far end, VLAN)`` and becomes a child segment holding that VLAN on both ends.
+    Each SDP is ``(near end, far end, VLAN)`` and becomes a child segment holding that VLAN on both ends,
+    with connection id ``<connection_id>-<order>``.
     """
     segments = [
-        {"order": order, "sourceSTP": f"{near}?vlan={vlan}", "destSTP": f"{far}?vlan={vlan}"}
+        {
+            "order": order,
+            "connectionId": f"{connection_id}-{order}",
+            "sourceSTP": f"{near}?vlan={vlan}",
+            "destSTP": f"{far}?vlan={vlan}",
+        }
         for order, (near, far, vlan) in enumerate(sdps or [])
     ]
     return AggregatorReservation.model_validate(

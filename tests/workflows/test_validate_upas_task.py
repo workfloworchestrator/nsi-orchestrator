@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from uuid import UUID
 
 import pytest
 
@@ -25,8 +26,14 @@ from tests import held_reservation
 from tests.workflows import assert_complete, assert_failed, extract_error, extract_state, run_workflow
 from tests.workflows.conftest import PATH_STPS
 from workflows.mdp2p.shared.ero import network_of
+from workflows.tasks import validate_upas_against_vlans
 
 TASK = "task_validate_upas_against_vlans"
+SUBSCRIPTION_ID = UUID("5e1f0b8c-0000-4000-8000-000000000001")
+UNKNOWN = "held by a uPA but not in use by the orchestrator"
+LOST = "in use by the orchestrator but not held by any uPA"
+FAILED_ONLY = "held only by a FAILED aggregator reservation, already released by the uPA"
+OUTSIDE_RANGE = "held outside the STP's current DDS range"
 SOURCE, A_TO_B, DESTINATION = PATH_STPS["source"], PATH_STPS["a_to_b"], PATH_STPS["destination"]
 # One uPA per domain of the chain, each serving its own network.
 NETWORKS = {name: network_of(PATH_STPS[stp]) for name, stp in (("a", "source"), ("b", "b_to_a"), ("c", "destination"))}
@@ -40,11 +47,15 @@ def _upa_reservation(
     source_stp: str | None,
     dest_stp: str | None,
     *,
+    connection_id: str = "upa-conn",
+    global_reservation_id: str | None = None,
     lifecycle_state: str = "Created",
     reservation_state: str = "ReserveStart",
 ) -> UpaReservation:
     return UpaReservation.model_validate(
         {
+            "connectionId": connection_id,
+            "globalReservationId": global_reservation_id,
             "reservationState": reservation_state,
             "lifecycleState": lifecycle_state,
             "sourceSTP": source_stp,
@@ -54,7 +65,7 @@ def _upa_reservation(
 
 
 def _segment(stp_a: str, stp_z: str, vlan: int) -> UpaReservation:
-    return _upa_reservation(f"{stp_a}?vlan={vlan}", f"{stp_z}?vlan={vlan}")
+    return _upa_reservation(f"{stp_a}?vlan={vlan}", f"{stp_z}?vlan={vlan}", connection_id=f"child-{stp_a}")
 
 
 def _healthy_upas() -> dict[str, list[UpaReservation]]:
@@ -98,11 +109,16 @@ def proxies(path_subscriptions: dict[str, str], monkeypatch: pytest.MonkeyPatch)
     return state
 
 
-def _drift() -> str:
+def _drift() -> tuple[str, dict[str, list[dict[str, str | None]]]]:
+    """Run the task, expect drift, and return its message and its structured findings per section.
+
+    Run it once per test: a failed step rolls back the test's transaction, seed subscriptions included.
+    """
     result, _, _ = run_workflow(TASK, [{}])
     assert_failed(result)
-    assert extract_state(result)["class"] == "InconsistentDataError"
-    return str(extract_error(result))
+    state = extract_state(result)
+    assert state["class"] == "InconsistentDataError"
+    return str(extract_error(result)), state["details"]
 
 
 def test_reports_nothing_when_upas_and_orchestrator_agree(proxies: Proxies) -> None:
@@ -142,36 +158,113 @@ def test_upa_reservations_outside_the_comparison_are_ignored(proxies: Proxies, r
     assert_complete(run_workflow(TASK, [{}])[0])
 
 
-def test_reports_a_vlan_a_upa_holds_that_the_orchestrator_does_not(proxies: Proxies) -> None:
-    proxies.upas["a"].append(_upa_reservation(f"{SOURCE}?vlan=1777-1779", f"{A_TO_B}?vlan=1777"))
+def test_names_the_upa_reservation_holding_an_unknown_vlan(proxies: Proxies) -> None:
+    proxies.upas["a"].append(
+        _upa_reservation(
+            f"{SOURCE}?vlan=1777-1779",
+            f"{A_TO_B}?vlan=1777",
+            connection_id="upa-orphan",
+            global_reservation_id="urn:uuid:g",
+        )
+    )
 
-    error = _drift()
+    message, details = _drift()
 
-    assert "held by a uPA but not in use by the orchestrator" in error
-    assert f"{SOURCE}: VLAN 1777-1779" in error
-    assert f"{A_TO_B}: VLAN 1777" in error
+    ids = {
+        "side": "uPA",
+        "connection_id": "upa-orphan",
+        "child_connection_id": None,
+        "global_reservation_id": "urn:uuid:g",
+        "subscription_id": None,
+    }
+    assert details[UNKNOWN] == [
+        {"stp_id": SOURCE, "vlans": "1777-1779", **ids},
+        {"stp_id": A_TO_B, "vlans": "1777", **ids},
+    ]
+    assert f"{SOURCE}: VLAN 1777-1779 (uPA connection upa-orphan, global reservation urn:uuid:g)" in message
+    assert LOST not in message
 
 
-def test_reports_a_vlan_the_orchestrator_uses_that_no_upa_holds(proxies: Proxies) -> None:
+def test_names_the_aggregator_connection_and_the_child_a_upa_lost(proxies: Proxies) -> None:
+    """The child id is what the uPA would report the segment as, so it names exactly what is missing."""
     proxies.upas["c"] = []
 
-    error = _drift()
+    message, details = _drift()
 
-    assert "in use by the orchestrator but not held by any uPA" in error
-    assert f"{PATH_STPS['c_to_b']}: VLAN 1500" in error
-    assert f"{DESTINATION}: VLAN 1500" in error
-    assert "held by a uPA but not" not in error
+    assert {(f["stp_id"], f["side"], f["connection_id"], f["child_connection_id"]) for f in details[LOST]} == {
+        (PATH_STPS["c_to_b"], "aggregator", HEALTHY_AGGREGATOR.connection_id, f"{HEALTHY_AGGREGATOR.connection_id}-1"),
+        (DESTINATION, "aggregator", HEALTHY_AGGREGATOR.connection_id, None),
+    }
+    assert f"child {HEALTHY_AGGREGATOR.connection_id}-1" in message
+    assert UNKNOWN not in message
+
+
+@pytest.mark.parametrize(
+    ("subscriptions", "expected_id", "expected_text"),
+    [
+        pytest.param(
+            {HEALTHY_AGGREGATOR.connection_id: SUBSCRIPTION_ID},
+            str(SUBSCRIPTION_ID),
+            f"subscription {SUBSCRIPTION_ID}",
+            id="with-subscription",
+        ),
+        pytest.param({}, None, "no subscription", id="without-subscription"),
+    ],
+)
+def test_names_the_subscription_of_an_aggregator_reservation(
+    proxies: Proxies,
+    monkeypatch: pytest.MonkeyPatch,
+    subscriptions: dict[str, UUID],
+    expected_id: str | None,
+    expected_text: str,
+) -> None:
+    proxies.upas["c"] = []
+    monkeypatch.setattr(validate_upas_against_vlans, "subscription_ids_for_values", lambda *_args: subscriptions)
+
+    message, details = _drift()
+
+    assert {f["subscription_id"] for f in details[LOST]} == {expected_id}
+    assert expected_text in message
+
+
+def test_a_path_end_is_named_once_by_the_segment_holding_it(proxies: Proxies) -> None:
+    """A path's end is also its first segment's outer end; only the line naming the child is kept."""
+    with_end_segments = held_reservation(
+        "ACTIVATED",
+        f"{SOURCE}?vlan=1500",
+        f"{DESTINATION}?vlan=1500",
+        connection_id="ends",
+        sdps=[(SOURCE, A_TO_B, 1500), (PATH_STPS["c_to_b"], DESTINATION, 1500)],
+    )
+    proxies.aggregator = [with_end_segments]
+    proxies.upas = {"a": [], "b": [], "c": []}
+
+    _, details = _drift()
+
+    source_lines = [f for f in details[LOST] if f["stp_id"] == SOURCE]
+    assert [(f["connection_id"], f["child_connection_id"]) for f in source_lines] == [("ends", "ends-0")]
+
+
+def test_a_vlan_held_twice_names_both_holders(proxies: Proxies) -> None:
+    proxies.upas["a"] += [
+        _upa_reservation(f"{SOURCE}?vlan=1777", None, connection_id="first"),
+        _upa_reservation(f"{SOURCE}?vlan=1777", None, connection_id="second"),
+    ]
+
+    _, details = _drift()
+
+    assert sorted(f["connection_id"] or "" for f in details[UNKNOWN]) == ["first", "second"]
 
 
 def test_reports_a_failed_reservation_released_by_the_upa_separately(proxies: Proxies) -> None:
     failed = held_reservation("FAILED", f"{SOURCE}?vlan=1600", f"{DESTINATION}?vlan=1600", connection_id="failed")
     proxies.aggregator = [failed, HEALTHY_AGGREGATOR]
 
-    error = _drift()
+    message, _ = _drift()
 
-    assert "held only by a FAILED aggregator reservation, already released by the uPA" in error
-    assert f"{SOURCE}: VLAN 1600" in error
-    assert "in use by the orchestrator but not held" not in error
+    assert FAILED_ONLY in message
+    assert f"{SOURCE}: VLAN 1600" in message
+    assert LOST not in message
 
 
 @pytest.mark.parametrize(
@@ -194,12 +287,12 @@ def test_reports_a_vlan_outside_the_current_dds_range_on_its_own(
     proxies.upas["a"].extend(upa_reservations)
     proxies.aggregator.extend(aggregator_reservations)
 
-    error = _drift()
+    message, _ = _drift()
 
-    assert "held outside the STP's current DDS range" in error
-    assert f"{SOURCE}: VLAN 3000" in error
-    assert "held by a uPA but not in use" not in error
-    assert "in use by the orchestrator but not held" not in error
+    assert OUTSIDE_RANGE in message
+    assert f"{SOURCE}: VLAN 3000" in message
+    assert UNKNOWN not in message
+    assert LOST not in message
 
 
 def test_a_failed_reservation_still_held_by_its_upa_is_fine(proxies: Proxies) -> None:
