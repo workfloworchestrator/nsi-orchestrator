@@ -181,7 +181,14 @@ def test_names_the_upa_reservation_holding_an_unknown_vlan(proxies: Proxies) -> 
         {"stp_id": SOURCE, "vlans": "1777-1779", **ids},
         {"stp_id": A_TO_B, "vlans": "1777", **ids},
     ]
-    assert f"{SOURCE}: VLAN 1777-1779 (uPA connection upa-orphan, global reservation urn:uuid:g)" in message
+    assert message.startswith(
+        "uPA VLANs and the orchestrator disagree:\n"
+        f"    {UNKNOWN}:\n"
+        f"        {SOURCE}: VLAN 1777-1779\n"
+        "            uPA connection upa-orphan\n"
+        "            global reservation urn:uuid:g\n"
+        f"        {A_TO_B}: VLAN 1777\n"
+    )
     assert LOST not in message
 
 

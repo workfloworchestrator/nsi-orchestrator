@@ -47,6 +47,8 @@ from workflows.shared import subscription_ids_for_values
 
 logger = structlog.get_logger(__name__)
 
+_INDENT = " " * 4
+
 
 def _fetch() -> tuple[list[Upa], list[AggregatorReservation], list[UpaReservation]]:
     """The aggregator's uPAs, its reservations, and every reservation those uPAs hold.
@@ -87,7 +89,8 @@ class Finding:
     global_reservation_id: str | None
     subscription_id: str | None
 
-    def line(self) -> str:
+    def lines(self) -> list[str]:
+        """The STP and VLANs, then one indented line per id to search for the reservation holding them."""
         subscription = f"subscription {self.subscription_id}" if self.subscription_id else "no subscription"
         ids = [
             f"{self.side} connection {self.connection_id}",
@@ -95,7 +98,7 @@ class Finding:
             subscription if self.side == "aggregator" else None,
             f"global reservation {self.global_reservation_id}" if self.global_reservation_id else None,
         ]
-        return f"    {self.stp_id}: VLAN {self.vlans} ({', '.join(filter(None, ids))})"
+        return [f"{_INDENT * 2}{self.stp_id}: VLAN {self.vlans}", *(f"{_INDENT * 3}{id_}" for id_ in ids if id_)]
 
 
 def _holders(
@@ -153,7 +156,12 @@ def compare_upa_vlans() -> State:
         holders = _holders(held, upa_reservations)
         subscriptions = subscription_ids_for_values("MultiDomainPoint2Point", "connection_id")
         findings = {title: _findings(pairs, holders, subscriptions) for title, pairs in sections.items() if pairs}
-        report = "\n".join(f"  {title}:\n" + "\n".join(f.line() for f in found) for title, found in findings.items())
+        report = "\n".join(
+            chain.from_iterable(
+                [f"{_INDENT}{title}:", *chain.from_iterable(f.lines() for f in found)]
+                for title, found in findings.items()
+            )
+        )
         details = {title: [asdict(f) for f in found] for title, found in findings.items()}
         raise InconsistentDataError("uPA VLANs and the orchestrator disagree:\n" + report, details)
 
