@@ -28,6 +28,7 @@ Authentication mirrors the dds-proxy, selected by ``AGGREGATOR_PROXY_MTLS_ENABLE
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx2
 import structlog
@@ -94,6 +95,31 @@ class AggregatorReservation(BaseModel):
     last_error: str | None = None
     criteria: AggregatorCriteria | None = None
     segments: list[AggregatorSegment] | None = None
+
+
+class Upa(BaseModel):
+    """A uPA the aggregator peers with, from ``GET /providers``; only the needed fields."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    nsa_id: str
+    network_ids: list[str]
+
+
+class UpaReservation(BaseModel):
+    """A reservation as a uPA itself reports it, from ``GET /providers/{nsaId}/reservations``.
+
+    The states are the uPA's raw NSI sub-states, not the proxy's simplified status. A reservation
+    that never got past reserving carries no criteria, so its STPs are absent. Only the fields that
+    decide which VLANs it holds are modelled.
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    reservation_state: str
+    lifecycle_state: str
+    source_stp: str | None = Field(default=None, alias="sourceSTP")
+    dest_stp: str | None = Field(default=None, alias="destSTP")
 
 
 def _client() -> httpx2.Client:
@@ -195,3 +221,18 @@ def list_reservations(*, with_segments: bool = False) -> list[AggregatorReservat
     """
     response = _request("GET", "/reservations?detail=full" if with_segments else "/reservations")
     return [AggregatorReservation.model_validate(item) for item in response.json()["reservations"]]
+
+
+def list_upas() -> list[Upa]:
+    """Return the uPAs the aggregator peers with, which ``list_upa_reservations`` can query."""
+    response = _request("GET", "/providers")
+    return [Upa.model_validate(item) for item in response.json()["providers"]]
+
+
+def list_upa_reservations(nsa_id: str) -> list[UpaReservation]:
+    """Return every reservation the uPA ``nsa_id`` holds, whatever its requester.
+
+    The proxy asks the uPA directly, as the aggregator, and only for a uPA the aggregator peers with.
+    """
+    response = _request("GET", f"/providers/{quote(nsa_id, safe='')}/reservations")
+    return [UpaReservation.model_validate(item) for item in response.json()["reservations"]]

@@ -28,6 +28,12 @@ NSI_SCHEDULES: list[dict] = [
         "trigger": "cron",
         "trigger_kwargs": {"hour": 1, "minute": 50},
     },
+    {
+        "name": "Validate uPA VLANs against the orchestrator",
+        "workflow_name": "task_validate_upas_against_vlans",
+        "trigger": "cron",
+        "trigger_kwargs": {"hour": 2, "minute": 10},
+    },
 ]
 
 
