@@ -22,10 +22,14 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from orchestrator.core.utils.errors import InconsistentDataError
+
+from products.product_blocks.sdp_constraint import ConstraintType
+from services.aggregator_proxy import AggregatorReservation
+from tests import held_reservation
 
 
 def _vc_sub(**vc_fields: object) -> SimpleNamespace:
@@ -134,7 +138,16 @@ def test_reconcile_connection_state(
     assert result["subscription"].vc.last_error == expected_error
 
 
-def _validate_subscription_and_reservation() -> tuple[SimpleNamespace, SimpleNamespace]:
+def _sdp_constraint(vlan: int | None, constraint_type: ConstraintType = ConstraintType.INCLUDE) -> SimpleNamespace:
+    """An SDP constraint on the a <-> b SDP, pinned to ``vlan`` when it is not None."""
+    stps = [SimpleNamespace(stp_id="urn:a:to-b"), SimpleNamespace(stp_id="urn:b:to-a")]
+    return SimpleNamespace(constraint_type=constraint_type, vlan=vlan, sdp=SimpleNamespace(stps=stps))
+
+
+def _validate_subscription_and_reservation(
+    sdp_vlan: int | None = None,
+) -> tuple[SimpleNamespace, AggregatorReservation]:
+    """A RESERVED connection a -> b over the a <-> b SDP, whose path holds ``sdp_vlan`` (1800 if None)."""
     subscription = SimpleNamespace(
         vc=SimpleNamespace(
             connection_id="c1",
@@ -145,22 +158,32 @@ def _validate_subscription_and_reservation() -> tuple[SimpleNamespace, SimpleNam
                 SimpleNamespace(stp=SimpleNamespace(stp_id="urn:a"), vlan="100"),
                 SimpleNamespace(stp=SimpleNamespace(stp_id="urn:b"), vlan="200"),
             ],
+            sdp_constraints=[_sdp_constraint(sdp_vlan)],
         )
     )
-    reservation = SimpleNamespace(
-        status="RESERVED",
-        global_reservation_id="urn:uuid:1",
-        criteria=SimpleNamespace(
-            p2ps=SimpleNamespace(capacity=1000, source_stp="urn:a?vlan=100", dest_stp="urn:b?vlan=200")
-        ),
+    path_vlan = 1800 if sdp_vlan is None else sdp_vlan
+    reservation = held_reservation(
+        "RESERVED", "urn:a?vlan=100", "urn:b?vlan=200", sdps=[("urn:a:to-b", "urn:b:to-a", path_vlan)]
     )
+    reservation.global_reservation_id = "urn:uuid:1"
     return subscription, reservation
 
 
-def test_validate_reservation_passes_when_matching(monkeypatch: pytest.MonkeyPatch) -> None:
+def _install_reservation(
+    monkeypatch: pytest.MonkeyPatch, module: ModuleType, reservation: AggregatorReservation
+) -> None:
+    def get_reservation(_cid: str, *, with_segments: bool = False) -> AggregatorReservation:
+        assert with_segments, "the pinned SDP VLANs are only in the segments"
+        return reservation
+
+    monkeypatch.setattr(module.aggregator_proxy, "get_reservation", get_reservation)
+
+
+@pytest.mark.parametrize("sdp_vlan", [pytest.param(None, id="unpinned"), pytest.param(1800, id="pinned")])
+def test_validate_reservation_passes_when_matching(sdp_vlan: int | None, monkeypatch: pytest.MonkeyPatch) -> None:
     module = importlib.import_module("workflows.mdp2p.validate_mdp2p")
-    subscription, reservation = _validate_subscription_and_reservation()
-    monkeypatch.setattr(module.aggregator_proxy, "get_reservation", lambda _cid: reservation)
+    subscription, reservation = _validate_subscription_and_reservation(sdp_vlan)
+    _install_reservation(monkeypatch, module, reservation)
 
     assert module.validate_reservation.__wrapped__(subscription=subscription)["subscription"] is subscription
 
@@ -176,12 +199,48 @@ def test_validate_reservation_passes_when_matching(monkeypatch: pytest.MonkeyPat
     ],
 )
 def test_validate_reservation_raises_on_mismatch(
-    mutate: Callable[[SimpleNamespace], None], monkeypatch: pytest.MonkeyPatch
+    mutate: Callable[[AggregatorReservation], None], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = importlib.import_module("workflows.mdp2p.validate_mdp2p")
     subscription, reservation = _validate_subscription_and_reservation()
     mutate(reservation)
-    monkeypatch.setattr(module.aggregator_proxy, "get_reservation", lambda _cid: reservation)
+    _install_reservation(monkeypatch, module, reservation)
 
     with pytest.raises(InconsistentDataError):
         module.validate_reservation.__wrapped__(subscription=subscription)
+
+
+@pytest.mark.parametrize(
+    ("state", "segments", "raises"),
+    [
+        pytest.param("RESERVED", [("urn:a:to-b", "urn:b:to-a", 1801)], True, id="other-vlan-on-the-sdp"),
+        pytest.param("ACTIVATED", [("urn:a:to-b", "urn:b:to-a", 1801)], True, id="activated-other-vlan"),
+        pytest.param("RESERVED", [], True, id="path-without-the-sdp"),
+        pytest.param("FAILED", [], False, id="failed-holds-no-path"),
+    ],
+)
+def test_validate_reservation_checks_a_pinned_sdp_vlan(
+    state: str, segments: list[tuple[str, str, int]], raises: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = importlib.import_module("workflows.mdp2p.validate_mdp2p")
+    subscription, _ = _validate_subscription_and_reservation(sdp_vlan=1800)
+    subscription.vc.state = state
+    reservation = held_reservation(state, "urn:a?vlan=100", "urn:b?vlan=200", sdps=segments)
+    reservation.global_reservation_id = "urn:uuid:1"
+    _install_reservation(monkeypatch, module, reservation)
+
+    if raises:
+        with pytest.raises(InconsistentDataError, match=r"pinned SDP VLAN on: urn:a:to-b\?vlan=1800, urn:b:to-a"):
+            module.validate_reservation.__wrapped__(subscription=subscription)
+    else:
+        module.validate_reservation.__wrapped__(subscription=subscription)
+
+
+def test_validate_reservation_ignores_an_excluded_sdp(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only an included SDP is on the path; an excluded one carries no VLAN to hold."""
+    module = importlib.import_module("workflows.mdp2p.validate_mdp2p")
+    subscription, reservation = _validate_subscription_and_reservation()
+    subscription.vc.sdp_constraints = [_sdp_constraint(1900, ConstraintType.EXCLUDE)]
+    _install_reservation(monkeypatch, module, reservation)
+
+    module.validate_reservation.__wrapped__(subscription=subscription)

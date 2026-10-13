@@ -203,6 +203,11 @@ Both need the pgvector extension.
   `sdp_vlan_<n>` positional fields built with `create_model`, stored on `SdpConstraint.vlan`) pins
   it. The fields carry their SDP name as schema `title`, so don't add `sdp_vlan_*` translations:
   the UI prefers a translation over the title.
+- **A pinned SDP VLAN is the only path VLAN a subscription stores.** An unpinned one is chosen by the
+  PCE and lives only in the aggregator's segments, so a subscription alone cannot say which VLANs its
+  path holds; the aggregator view is what decides in use. `validate_mdp2p` checks the stored side
+  against it: a `RESERVED` or `ACTIVATED` path must hold each pinned VLAN on both STPs of its SDP.
+  Earlier states and `FAILED` are skipped, since such a path may not exist (yet).
 - **In-use VLANs are fetched once per form generator and shared by its pages.** `fetch_vlans_in_use`
   runs at the top of the create/retry generator and its result is passed to `connection_form` and
   `path_input`, which both workflows use for the pages after it. pydantic-forms replays the generator from the start on every page submit, so a

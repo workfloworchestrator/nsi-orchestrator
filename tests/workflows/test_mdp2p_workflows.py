@@ -28,6 +28,7 @@ from tests import held_reservation
 from tests.workflows import (
     assert_awaiting_callback,
     assert_complete,
+    assert_failed,
     extract_state,
     product_id,
     resume_callback,
@@ -286,11 +287,45 @@ def test_validate_mdp2p(mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
             },
         }
     )
-    monkeypatch.setattr(aggregator_proxy, "get_reservation", lambda _cid: reservation)
+    monkeypatch.setattr(aggregator_proxy, "get_reservation", lambda _cid, **_kwargs: reservation)
 
     result, _, _ = run_workflow("validate_mdp2p", [{"subscription_id": mdp2p_subscription}])
 
     assert_complete(result)
+
+
+@pytest.mark.parametrize(
+    ("path_vlan", "complete"),
+    [pytest.param(1500, True, id="path-holds-the-pinned-vlan"), pytest.param(1501, False, id="path-on-another-vlan")],
+)
+def test_validate_mdp2p_checks_a_pinned_sdp_vlan_against_the_path(
+    path_subscriptions: dict[str, str],
+    aggregator: None,
+    monkeypatch: pytest.MonkeyPatch,
+    path_vlan: int,
+    complete: bool,
+) -> None:
+    """The pinned VLAN is stored on the subscription, and the path the aggregator reports must hold it."""
+    form = _path_form(path_subscriptions["A <-> B"])
+    result, process, step_log = run_workflow(
+        "create_mdp2p", [{"product": product_id("MultiDomainPoint2Point")}, form, {"sdp_vlan_1": 1500}, {}]
+    )
+    result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-1"})
+    subscription_id = str(extract_state(result)["subscription_id"])
+    reservation = _path_reservation("RESERVED", "conn-1", [(PATH_STPS["a_to_b"], PATH_STPS["b_to_a"], path_vlan)])
+    reservation.global_reservation_id = MultiDomainPoint2Point.from_subscription(
+        subscription_id
+    ).vc.global_reservation_id
+    monkeypatch.setattr(aggregator_proxy, "get_reservation", lambda _cid, **_kwargs: reservation)
+
+    result, _, _ = run_workflow("validate_mdp2p", [{"subscription_id": subscription_id}])
+
+    if complete:
+        assert_complete(result)
+    else:
+        assert_failed(result)
+        assert extract_state(result)["class"] == "InconsistentDataError"
+        assert f"{PATH_STPS['a_to_b']}?vlan=1500" in str(extract_state(result)["error"])
 
 
 def test_terminate_mdp2p(mdp2p_subscription: str) -> None:

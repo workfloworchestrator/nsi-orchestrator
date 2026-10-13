@@ -125,15 +125,20 @@ def test_reserve_sends_the_ero_only_when_there_is_one(
     assert captured["criteria"]["p2ps"].get("ero") == expected
 
 
-def test_get_reservation_parses_stp_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("with_segments", "query"),
+    [pytest.param(False, "", id="summary"), pytest.param(True, "detail=full", id="with-segments")],
+)
+def test_get_reservation_parses_stp_aliases(monkeypatch: pytest.MonkeyPatch, with_segments: bool, query: str) -> None:
     def handler(request: httpx2.Request) -> httpx2.Response:
         assert request.method == "GET"
         assert request.url.path == "/reservations/conn-1"
+        assert request.url.query.decode() == query
         return httpx2.Response(200, json=RESERVATION_JSON)
 
     _install_mock_transport(monkeypatch, handler)
 
-    reservation = get_reservation("conn-1")
+    reservation = get_reservation("conn-1", with_segments=with_segments)
 
     assert reservation.connection_id == "conn-1"
     assert reservation.status == "RESERVED"

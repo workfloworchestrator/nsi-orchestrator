@@ -17,10 +17,15 @@ from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
 
+from products.product_blocks.sdp_constraint import ConstraintType, SdpConstraintBlock
 from products.product_types.mdp2p import MultiDomainPoint2Point
 from services import aggregator_proxy
+from workflows.mdp2p.shared.fsm import ConnectionState
+from workflows.mdp2p.shared.vlans import StpVlan, reservations_vlan_pairs
 
 logger = structlog.get_logger(__name__)
+
+_PATH_HELD_STATES = {ConnectionState.RESERVED, ConnectionState.ACTIVATED}
 
 
 @step("Validate reservation matches the aggregator")
@@ -31,7 +36,7 @@ def validate_reservation(subscription: MultiDomainPoint2Point) -> State:
     compared; everything that defines the connection at the aggregator is.
     """
     vc = subscription.vc
-    reservation = aggregator_proxy.get_reservation(vc.connection_id)
+    reservation = aggregator_proxy.get_reservation(vc.connection_id, with_segments=True)
 
     if reservation.status != vc.state:
         raise InconsistentDataError(f"Aggregator status {reservation.status} does not match stored state {vc.state}")
@@ -56,7 +61,25 @@ def validate_reservation(subscription: MultiDomainPoint2Point) -> State:
             f"Aggregator destination STP {p2ps.dest_stp} does not match stored {expected_destination}"
         )
 
+    # Only a reserved or activated connection holds its whole path; an earlier or failed one may not.
+    pinned = _pinned_sdp_vlans(vc.sdp_constraints) if vc.state in _PATH_HELD_STATES else set()
+    if missing := sorted(pinned - reservations_vlan_pairs([reservation])):
+        raise InconsistentDataError(
+            "Aggregator path does not hold the pinned SDP VLAN on: "
+            + ", ".join(f"{stp_id}?vlan={vlan}" for stp_id, vlan in missing)
+        )
+
     return {"subscription": subscription}
+
+
+def _pinned_sdp_vlans(constraints: list[SdpConstraintBlock]) -> set[StpVlan]:
+    """Both STPs of every included SDP the user pinned a VLAN on, with that VLAN."""
+    return {
+        (stp.stp_id, constraint.vlan)
+        for constraint in constraints
+        if constraint.constraint_type == ConstraintType.INCLUDE and constraint.vlan is not None
+        for stp in constraint.sdp.stps
+    }
 
 
 @validate_workflow()

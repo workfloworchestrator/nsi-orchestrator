@@ -226,7 +226,8 @@ idempotently.
 - **Release** — `ACTIVATED → RESERVED` via `POST /reservations/{connectionId}/release`.
 - **Modify** — edit the local virtual circuit `circuit_description` (not pushed to the aggregator).
 - **Validate** — assert the connection's stored capacity, STPs, VLANs, global reservation id and
-  state still match `GET /reservations/{connectionId}`.
+  state still match `GET /reservations/{connectionId}?detail=full`, and that a `RESERVED` or
+  `ACTIVATED` connection's path holds every SDP VLAN the user pinned, on both STPs of that SDP.
 - **Terminate** — `RESERVED` or `FAILED` → `TERMINATED` via `DELETE /reservations/{connectionId}`.
 - **Reconcile** — re-read `GET /reservations/{connectionId}` and, if `state` drifted from the
   aggregator's stable state (e.g. a callback was missed after a network problem), update it;

@@ -210,9 +210,13 @@ def terminate(connection_id: str, callback_url: str) -> None:
     _request("DELETE", f"/reservations/{connection_id}", json={"callbackURL": callback_url})
 
 
-def get_reservation(connection_id: str) -> AggregatorReservation:
-    """Return the current reservation detail for ``connection_id``."""
-    response = _request("GET", f"/reservations/{connection_id}")
+def get_reservation(connection_id: str, *, with_segments: bool = False) -> AggregatorReservation:
+    """Return the current reservation detail for ``connection_id``.
+
+    ``with_segments`` asks for ``detail=full``, which adds the child segments; no extra NSI round trip.
+    """
+    path = f"/reservations/{connection_id}"
+    response = _request("GET", f"{path}?detail=full" if with_segments else path)
     return AggregatorReservation.model_validate(response.json())
 
 
