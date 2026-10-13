@@ -12,6 +12,7 @@
 # limitations under the License.
 
 import structlog
+from orchestrator.core.utils.errors import InconsistentDataError
 from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
@@ -28,7 +29,9 @@ def validate_topology_present_in_dds(subscription: Topology) -> State:
     topology_id = subscription.topology.topology_id
     known_topology_ids = {topology.id for topology in fetch_topologies()}
     if topology_id not in known_topology_ids:
-        raise AssertionError(f"Topology {topology_id} is no longer present in the dds-proxy /topologies endpoint")
+        raise InconsistentDataError(
+            f"Topology {topology_id} is no longer present in the dds-proxy /topologies endpoint"
+        )
 
     return {"subscription": subscription}
 

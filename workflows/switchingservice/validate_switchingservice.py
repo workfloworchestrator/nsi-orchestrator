@@ -12,6 +12,7 @@
 # limitations under the License.
 
 import structlog
+from orchestrator.core.utils.errors import InconsistentDataError
 from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
@@ -28,13 +29,13 @@ def validate_switchingservice_present_in_dds(subscription: SwitchingService) -> 
     switching_service_id = subscription.switchingservice.switching_service_id
     dds_service = next((service for service in fetch_switching_services() if service.id == switching_service_id), None)
     if dds_service is None:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Switching service {switching_service_id} is no longer present in the dds-proxy "
             "/switching-services endpoint"
         )
     stored_topology_id = subscription.switchingservice.topology.topology_id
     if dds_service.topology_id != stored_topology_id:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Switching service {switching_service_id} moved topology: stored {stored_topology_id}, "
             f"DDS advertises {dds_service.topology_id}"
         )

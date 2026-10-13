@@ -12,6 +12,7 @@
 # limitations under the License.
 
 import structlog
+from orchestrator.core.utils.errors import InconsistentDataError
 from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
@@ -28,23 +29,23 @@ def validate_stp_present_in_dds(subscription: ServiceTerminationPoint) -> State:
     stp_id = subscription.stp.stp_id
     dds_stp = next((stp for stp in fetch_service_termination_points() if stp.id == stp_id), None)
     if dds_stp is None:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Service termination point {stp_id} is no longer present in the dds-proxy "
             "/service-termination-points endpoint"
         )
     if dds_stp.capacity_mbits != subscription.stp.capacity:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Service termination point {stp_id} capacity drifted: stored {subscription.stp.capacity} Mbit/s, "
             f"DDS advertises {dds_stp.capacity_mbits} Mbit/s; reconcile to repair"
         )
     if dds_stp.label_group != subscription.stp.label_group:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Service termination point {stp_id} VLAN range drifted: stored {subscription.stp.label_group}, "
             f"DDS advertises {dds_stp.label_group}; reconcile to repair"
         )
     stored_switching_service_id = subscription.stp.switching_service.switching_service_id
     if dds_stp.switching_service_id != stored_switching_service_id:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Service termination point {stp_id} moved switching service: stored "
             f"{stored_switching_service_id}, DDS advertises {dds_stp.switching_service_id}"
         )

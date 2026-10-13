@@ -49,7 +49,8 @@ Both need the pgvector extension.
   aggregator-proxy speaks for a single requester NSA, so a connection without a subscription is
   anomalous, whereas an unsubscribed DDS entry is the normal state of every ANA peer's topology.
   Terminated reservations are excluded (their subscriptions are terminated too, so they are already
-  outside `subscribed_values`), and a failed fetch aborts rather than diffing against nothing.
+  outside `subscribed_values`), and a failed fetch aborts as plain `failed` rather than diffing
+  against nothing.
   `settings.ignored_connection_ids` suppresses known orphans — the aggregator-proxy's list is closed
   per *requester NSA*, not per client, so anything else talking to that proxy (a manual call, the
   automation UI) also lands in it. The list applies to the reservation-without-subscription direction
@@ -171,8 +172,11 @@ Both need the pgvector extension.
   (#1882) `_default_process_func` in `services/processes.py` maps only `InconsistentDataError` to
   `ProcessStatus.INCONSISTENT_DATA`; an `AssertionError` lands in plain `failed`, and the default
   handler no longer sets a NOC assignee at all. Before 5.4.0 it was the other way round. A proxy
-  `RuntimeError` (`DdsProxyError` / `AggregatorProxyError`) lands in plain `failed` too.
-  `validate_upas_against_vlans` follows this; the older validators still raise `AssertionError`.
+  `RuntimeError` (`DdsProxyError` / `AggregatorProxyError`) lands in plain `failed` too; let it
+  propagate rather than wrap it, so an outage is not reported as drift. Every `validate_*` workflow
+  and both system tasks follow this (they are all registered with `is_task`, which the mapping
+  requires); `test_tasks.py` pins core's mapping so an orchestrator-core upgrade that changes it
+  fails the suite.
 
 ## Gotchas
 

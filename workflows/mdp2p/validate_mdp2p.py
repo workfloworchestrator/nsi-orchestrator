@@ -12,6 +12,7 @@
 # limitations under the License.
 
 import structlog
+from orchestrator.core.utils.errors import InconsistentDataError
 from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
@@ -33,25 +34,27 @@ def validate_reservation(subscription: MultiDomainPoint2Point) -> State:
     reservation = aggregator_proxy.get_reservation(vc.connection_id)
 
     if reservation.status != vc.state:
-        raise AssertionError(f"Aggregator status {reservation.status} does not match stored state {vc.state}")
+        raise InconsistentDataError(f"Aggregator status {reservation.status} does not match stored state {vc.state}")
     if reservation.global_reservation_id != vc.global_reservation_id:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Aggregator global reservation id {reservation.global_reservation_id} does not match "
             f"stored {vc.global_reservation_id}"
         )
 
     if reservation.criteria is None:
-        raise AssertionError("Aggregator returned no criteria to validate the connection against")
+        raise InconsistentDataError("Aggregator returned no criteria to validate the connection against")
     p2ps = reservation.criteria.p2ps
     source, destination = vc.saps
     expected_source = f"{source.stp.stp_id}?vlan={source.vlan}"
     expected_destination = f"{destination.stp.stp_id}?vlan={destination.vlan}"
     if p2ps.capacity != vc.service_speed:
-        raise AssertionError(f"Aggregator capacity {p2ps.capacity} does not match stored {vc.service_speed}")
+        raise InconsistentDataError(f"Aggregator capacity {p2ps.capacity} does not match stored {vc.service_speed}")
     if p2ps.source_stp != expected_source:
-        raise AssertionError(f"Aggregator source STP {p2ps.source_stp} does not match stored {expected_source}")
+        raise InconsistentDataError(f"Aggregator source STP {p2ps.source_stp} does not match stored {expected_source}")
     if p2ps.dest_stp != expected_destination:
-        raise AssertionError(f"Aggregator destination STP {p2ps.dest_stp} does not match stored {expected_destination}")
+        raise InconsistentDataError(
+            f"Aggregator destination STP {p2ps.dest_stp} does not match stored {expected_destination}"
+        )
 
     return {"subscription": subscription}
 

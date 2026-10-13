@@ -25,6 +25,7 @@ from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
+from orchestrator.core.utils.errors import InconsistentDataError
 
 
 def _vc_sub(**vc_fields: object) -> SimpleNamespace:
@@ -182,5 +183,5 @@ def test_validate_reservation_raises_on_mismatch(
     mutate(reservation)
     monkeypatch.setattr(module.aggregator_proxy, "get_reservation", lambda _cid: reservation)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(InconsistentDataError):
         module.validate_reservation.__wrapped__(subscription=subscription)
