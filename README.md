@@ -355,9 +355,11 @@ Alongside the per-subscription validators, two system tasks run on a schedule:
   task fails without reporting drift, rather than flagging the whole estate.
 - **`task_validate_upas_against_vlans`** (nightly) — asks every uPA the aggregator peers with for
   all the reservations it holds, whatever the requester, and compares the VLANs they hold on each
-  subscribed STP against the VLANs the aggregator's reservations hold. It reports VLANs a uPA holds
-  that the orchestrator does not know about (e.g. after an error that never reached the aggregator),
-  VLANs the orchestrator uses that no uPA holds, and, separately, VLANs held only by a `FAILED`
+  subscribed STP against the VLANs the aggregator's reservations hold. These are all the aggregator
+  reservations of the proxy's requester NSA, subscription or not, the same set the create form treats
+  as in use. It reports VLANs a uPA holds that no aggregator reservation does (e.g. after an error
+  that never reached the aggregator), VLANs an aggregator reservation holds that no uPA does, and,
+  separately, VLANs held only by a `FAILED`
   aggregator reservation that the uPA has already released and VLANs held outside the STP's current
   DDS range (left over from before a range change, since a uPA only grants VLANs within it). Each
   finding names the reservation holding the VLANs: the uPA's connection id, or the aggregator's

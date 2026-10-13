@@ -30,8 +30,8 @@ from workflows.tasks import validate_upas_against_vlans
 
 TASK = "task_validate_upas_against_vlans"
 SUBSCRIPTION_ID = UUID("5e1f0b8c-0000-4000-8000-000000000001")
-UNKNOWN = "held by a uPA but not in use by the orchestrator"
-LOST = "in use by the orchestrator but not held by any uPA"
+UNKNOWN = "held by a uPA but not in use at the aggregator"
+LOST = "in use at the aggregator but not held by any uPA"
 FAILED_ONLY = "held only by a FAILED aggregator reservation, already released by the uPA"
 OUTSIDE_RANGE = "held outside the STP's current DDS range"
 SOURCE, A_TO_B, DESTINATION = PATH_STPS["source"], PATH_STPS["a_to_b"], PATH_STPS["destination"]
@@ -182,7 +182,7 @@ def test_names_the_upa_reservation_holding_an_unknown_vlan(proxies: Proxies) -> 
         {"stp_id": A_TO_B, "vlans": "1777", **ids},
     ]
     assert message.startswith(
-        "uPA VLANs and the orchestrator disagree:\n"
+        "uPA VLANs and the aggregator disagree:\n"
         f"    {UNKNOWN}:\n"
         f"        {SOURCE}: VLAN 1777-1779\n"
         "            uPA connection upa-orphan\n"

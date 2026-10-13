@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compare the VLANs every uPA holds against the VLANs this orchestrator thinks are in use."""
+"""Compare the VLANs every uPA holds against the VLANs the aggregator's reservations hold."""
 
 from __future__ import annotations
 
@@ -132,9 +132,9 @@ def _findings(
     ]
 
 
-@step("Compare uPA VLANs against the orchestrator")
+@step("Compare uPA VLANs against the aggregator")
 def compare_upa_vlans() -> State:
-    """Raise on any VLAN a uPA holds that the orchestrator does not, or the other way around."""
+    """Raise on any VLAN a uPA holds that no aggregator reservation does, or the other way around."""
     upas, aggregator_reservations, upa_reservations = _fetch()
     ranges, unchecked_stps = _scope(upas)
 
@@ -147,8 +147,8 @@ def compare_upa_vlans() -> State:
 
     # A uPA only grants VLANs within the STP's range, so one held outside it predates a range change.
     sections = {
-        "held by a uPA but not in use by the orchestrator": upa - in_use,
-        "in use by the orchestrator but not held by any uPA": live - upa,
+        "held by a uPA but not in use at the aggregator": upa - in_use,
+        "in use at the aggregator but not held by any uPA": live - upa,
         "held only by a FAILED aggregator reservation, already released by the uPA": in_use - live - upa,
         "held outside the STP's current DDS range": upa_outside | in_use_outside,
     }
@@ -163,9 +163,9 @@ def compare_upa_vlans() -> State:
             )
         )
         details = {title: [asdict(f) for f in found] for title, found in findings.items()}
-        raise InconsistentDataError("uPA VLANs and the orchestrator disagree:\n" + report, details)
+        raise InconsistentDataError("uPA VLANs and the aggregator disagree:\n" + report, details)
 
-    logger.info("uPA VLANs match the orchestrator", upas=len(upas), vlans=len(upa))
+    logger.info("uPA VLANs match the aggregator", upas=len(upas), vlans=len(upa))
     return {
         "checked_upas": sorted(upa.nsa_id for upa in upas),
         "checked_vlans": len(upa),
