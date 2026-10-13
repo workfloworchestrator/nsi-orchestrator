@@ -133,11 +133,10 @@ def test_reports_nothing_when_upas_and_orchestrator_agree(proxies: Proxies) -> N
             _upa_reservation("urn:ogf:network:a.example.net:2025:topology:unsubscribed?vlan=1500", None),
             id="stp-without-subscription",
         ),
-        pytest.param(_upa_reservation(f"{SOURCE}?vlan=3000", None), id="vlan-outside-the-dds-range"),
     ],
 )
 def test_upa_reservations_outside_the_comparison_are_ignored(proxies: Proxies, reservation: UpaReservation) -> None:
-    """Released VLANs, reservations without STPs, and VLANs this orchestrator does not administer."""
+    """Released VLANs, reservations without STPs, and STPs this orchestrator does not administer."""
     proxies.upas["a"].append(reservation)
 
     assert_complete(run_workflow(TASK, [{}])[0])
@@ -172,6 +171,34 @@ def test_reports_a_failed_reservation_released_by_the_upa_separately(proxies: Pr
 
     assert "held only by a FAILED aggregator reservation, already released by the uPA" in error
     assert f"{SOURCE}: VLAN 1600" in error
+    assert "in use by the orchestrator but not held" not in error
+
+
+@pytest.mark.parametrize(
+    ("upa_reservations", "aggregator_reservations"),
+    [
+        pytest.param([_upa_reservation(f"{SOURCE}?vlan=3000", None)], [], id="held-by-a-upa"),
+        pytest.param(
+            [],
+            [held_reservation("ACTIVATED", f"{SOURCE}?vlan=3000", f"{DESTINATION}?vlan=1500", connection_id="old")],
+            id="in-use-by-the-orchestrator",
+        ),
+    ],
+)
+def test_reports_a_vlan_outside_the_current_dds_range_on_its_own(
+    proxies: Proxies,
+    upa_reservations: list[UpaReservation],
+    aggregator_reservations: list[AggregatorReservation],
+) -> None:
+    """A range change leaves reservations outside the new range; they are not in the other sections."""
+    proxies.upas["a"].extend(upa_reservations)
+    proxies.aggregator.extend(aggregator_reservations)
+
+    error = _drift()
+
+    assert "held outside the STP's current DDS range" in error
+    assert f"{SOURCE}: VLAN 3000" in error
+    assert "held by a uPA but not in use" not in error
     assert "in use by the orchestrator but not held" not in error
 
 

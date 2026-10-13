@@ -59,7 +59,9 @@ Both need the pgvector extension.
   reservations hold (the same view `vlans_in_use_by_stp` gives the create form). The uPAs come from
   the aggregator-proxy's `GET /providers`, so the peering rule lives only in the proxy; each is asked
   through `/providers/{nsaId}/reservations`, which queries it as the aggregator. Only subscribed STPs
-  and VLANs within their DDS `label_group` count; everything else on a uPA is not ours to administer.
+  count; everything else on a uPA is not ours to administer. Every VLAN on those STPs is compared,
+  not only those in the DDS `label_group`: a uPA only grants VLANs within the STP's range, so one
+  outside it predates a range change and gets its own report section instead of being invisible.
   A uPA reservation holds its VLAN by SuPA's own rule (`job/reserve.py`): lifecycle not
   `Failed`/`PassedEndTime`/`Terminated` and reservation `ReserveHeld`/`Committing`/`Start`. That
   differs from the aggregator side on purpose: a `FAILED` aggregator reservation keeps its VLANs

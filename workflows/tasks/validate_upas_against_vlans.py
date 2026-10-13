@@ -53,17 +53,19 @@ def _fetch() -> tuple[list[Upa], list[AggregatorReservation], list[UpaReservatio
     return upas, aggregator_reservations, upa_reservations
 
 
-def _scope(upas: list[Upa]) -> tuple[set[StpVlan], list[str]]:
-    """The pairs this orchestrator administers, and the subscribed STPs no queried uPA serves.
-
-    A pair is administered when its STP has a subscription and its VLAN is in that STP's DDS range.
-    """
+def _scope(upas: list[Upa]) -> tuple[dict[str, set[int]], list[str]]:
+    """The subscribed STPs a queried uPA serves, with their DDS VLAN range, and those no queried uPA serves."""
     served = set(chain.from_iterable(upa.network_ids for upa in upas))
     stps = subscribed_stps()
-    scope = {
-        (stp.stp_id, vlan) for stp in stps if network_of(stp.stp_id) in served for vlan in vlan_set(stp.label_group)
-    }
-    return scope, sorted(stp.stp_id for stp in stps if network_of(stp.stp_id) not in served)
+    ranges = {stp.stp_id: vlan_set(stp.label_group) for stp in stps if network_of(stp.stp_id) in served}
+    return ranges, sorted(stp.stp_id for stp in stps if network_of(stp.stp_id) not in served)
+
+
+def _split(ranges: dict[str, set[int]], pairs: set[StpVlan]) -> tuple[set[StpVlan], set[StpVlan]]:
+    """The pairs on a checked STP, split into those within its current DDS range and those outside it."""
+    checked = {(stp_id, vlan) for stp_id, vlan in pairs if stp_id in ranges}
+    inside = {(stp_id, vlan) for stp_id, vlan in checked if vlan in ranges[stp_id]}
+    return inside, checked - inside
 
 
 def _report(sections: dict[str, set[StpVlan]]) -> str:
@@ -78,19 +80,21 @@ def _report(sections: dict[str, set[StpVlan]]) -> str:
 def compare_upa_vlans() -> State:
     """Raise on any VLAN a uPA holds that the orchestrator does not, or the other way around."""
     upas, aggregator_reservations, upa_reservations = _fetch()
-    scope, unchecked_stps = _scope(upas)
+    ranges, unchecked_stps = _scope(upas)
 
     # A FAILED reservation keeps its VLANs at the aggregator until terminated, but SuPA releases
     # them at once, so the pairs only a FAILED reservation holds are reported on their own.
     held = held_reservations(aggregator_reservations)
-    in_use = scope & reservations_vlan_pairs(held)
-    live = scope & reservations_vlan_pairs(r for r in held if r.status != ConnectionState.FAILED)
-    upa = scope & upa_vlan_pairs(upa_reservations)
+    in_use, in_use_outside = _split(ranges, reservations_vlan_pairs(held))
+    live, _ = _split(ranges, reservations_vlan_pairs(r for r in held if r.status != ConnectionState.FAILED))
+    upa, upa_outside = _split(ranges, upa_vlan_pairs(upa_reservations))
 
+    # A uPA only grants VLANs within the STP's range, so one held outside it predates a range change.
     sections = {
         "held by a uPA but not in use by the orchestrator": upa - in_use,
         "in use by the orchestrator but not held by any uPA": live - upa,
         "held only by a FAILED aggregator reservation, already released by the uPA": in_use - live - upa,
+        "held outside the STP's current DDS range": upa_outside | in_use_outside,
     }
     if any(sections.values()):
         raise InconsistentDataError("uPA VLANs and the orchestrator disagree:\n" + _report(sections))
