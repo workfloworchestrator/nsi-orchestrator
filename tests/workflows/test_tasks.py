@@ -16,7 +16,11 @@
 from __future__ import annotations
 
 import pytest
+from orchestrator.core.db import ProcessTable
+from orchestrator.core.services import processes
 from orchestrator.core.targets import Target
+from orchestrator.core.utils.errors import InconsistentDataError, error_state_to_dict
+from orchestrator.core.workflow import Failed, ProcessStatus
 from orchestrator.core.workflows import get_workflow
 
 from schedules import NSI_SCHEDULES
@@ -52,6 +56,23 @@ def test_scheduled_tasks_never_block_their_own_later_runs(workflow_name: str) ->
     assert workflow.run_predicate is None
 
 
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        pytest.param(InconsistentDataError("drift"), ProcessStatus.INCONSISTENT_DATA, id="drift"),
+        pytest.param(AggregatorProxyError("down"), ProcessStatus.FAILED, id="proxy-outage"),
+        pytest.param(AssertionError("drift"), ProcessStatus.FAILED, id="assertion-error-is-plain-failed"),
+    ],
+)
+def test_orchestrator_core_maps_validator_errors_to_process_status(error: Exception, expected: str) -> None:
+    """Pins core's mapping (5.4.0, #1882) that the validators rely on to reach ``inconsistent_data``."""
+    process = ProcessTable(is_task=True)
+
+    processes.PROCESS_STEP_HANDLER(process, Failed(error_state_to_dict(error)))
+
+    assert process.last_status == expected
+
+
 def test_reports_nothing_when_every_reservation_has_a_subscription(
     mdp2p_subscription: str, reservations: list[AggregatorReservation]
 ) -> None:
@@ -84,6 +105,7 @@ def test_reports_drift_in_both_directions(
     result, _, _ = run_workflow(TASK, [{}])
 
     assert_failed(result)
+    assert extract_state(result)["class"] == "InconsistentDataError"
     assert expected in str(extract_error(result))
 
 
@@ -101,7 +123,7 @@ def test_terminated_reservations_are_not_orphans(
 def test_an_unreachable_aggregator_fails_without_reporting_drift(
     mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A failed fetch must abort rather than diff against nothing."""
+    """A failed fetch must abort rather than diff against nothing, as a plain failure, not drift."""
 
     def _boom() -> list[AggregatorReservation]:
         raise AggregatorProxyError("connection refused")
@@ -111,9 +133,8 @@ def test_an_unreachable_aggregator_fails_without_reporting_drift(
     result, _, _ = run_workflow(TASK, [{}])
 
     assert_failed(result)
-    error = str(extract_error(result))
-    assert "nothing was compared" in error
-    assert "without a live reservation" not in error
+    assert extract_state(result)["class"] == "AggregatorProxyError"
+    assert "without a live reservation" not in str(extract_error(result))
 
 
 class TestIgnoredConnectionIds:

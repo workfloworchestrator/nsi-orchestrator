@@ -14,12 +14,12 @@
 """Compare the aggregator's live reservations against the MDP2P subscriptions."""
 
 import structlog
+from orchestrator.core.utils.errors import InconsistentDataError
 from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import task
 from pydantic_forms.types import State
 
 from services import aggregator_proxy
-from services.aggregator_proxy import AggregatorProxyError
 from settings import settings
 from workflows.mdp2p.shared.fsm import ConnectionState
 from workflows.shared import subscribed_values
@@ -29,11 +29,12 @@ logger = structlog.get_logger(__name__)
 
 @step("Compare aggregator reservations against subscriptions")
 def compare_reservations_to_subscriptions() -> State:
-    """Assert every live reservation has a subscription and vice versa."""
-    try:
-        reservations = aggregator_proxy.list_reservations()
-    except AggregatorProxyError as exc:
-        raise AssertionError(f"Aggregator could not be read, so nothing was compared: {exc}") from None
+    """Raise unless every live reservation has a subscription and vice versa.
+
+    An ``AggregatorProxyError`` is left to propagate: an outage ends the run as ``failed``, not as
+    the ``inconsistent_data`` that drift gets, and nothing is compared.
+    """
+    reservations = aggregator_proxy.list_reservations()
 
     # Terminated reservations are excluded: their subscriptions are terminated too.
     live = {r.connection_id for r in reservations if r.status != ConnectionState.TERMINATED}
@@ -44,7 +45,7 @@ def compare_reservations_to_subscriptions() -> State:
     subscriptions_without_reservation = sorted(subscribed - live)
 
     if reservations_without_subscription or subscriptions_without_reservation:
-        raise AssertionError(
+        raise InconsistentDataError(
             "Aggregator and subscriptions disagree:\n"
             f"  reservations without a subscription: {reservations_without_subscription}\n"
             f"  subscriptions without a live reservation: {subscriptions_without_reservation}"

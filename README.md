@@ -361,9 +361,11 @@ Alongside the per-subscription validators, two system tasks run on a schedule:
   aggregator reservation that the uPA has already released and VLANs held outside the STP's current
   DDS range (left over from before a range change, since a uPA only grants VLANs within it). The uPAs
   are the ones the aggregator-proxy lists at `GET /providers` (those in the aggregator's DDS
-  `peersWith`); STPs on a network none of them serves are listed as unchecked. Findings end the run
-  as `inconsistent_data`; an unreachable proxy as plain `failed`. Needs nsi-aggregator-proxy's
-  `GET /providers` and `GET /providers/{nsaId}/reservations`.
+  `peersWith`); STPs on a network none of them serves are listed as unchecked. Needs
+  nsi-aggregator-proxy's `GET /providers` and `GET /providers/{nsaId}/reservations`.
+
+Drift found by these tasks, or by a subscription's validate workflow, ends the run as
+`inconsistent_data`; an unreachable dds-proxy or aggregator-proxy ends it as plain `failed`.
 
 Core's own schedules (validate subscriptions, validate products, resume workflows, clean up tasks,
 awaiting-callback sweep) are loaded by `scheduler load-initial-schedule`; this project's live in

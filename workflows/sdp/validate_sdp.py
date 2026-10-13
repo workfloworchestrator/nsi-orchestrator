@@ -12,6 +12,7 @@
 # limitations under the License.
 
 import structlog
+from orchestrator.core.utils.errors import InconsistentDataError
 from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
@@ -28,7 +29,7 @@ def validate_sdp_present_in_dds(subscription: ServiceDemarcationPoint) -> State:
     pair = frozenset(stp.stp_id for stp in subscription.sdp.stps)
     known_pairs = {frozenset((sdp.stp_a_id, sdp.stp_z_id)) for sdp in fetch_service_demarcation_points()}
     if pair not in known_pairs:
-        raise AssertionError(
+        raise InconsistentDataError(
             f"Service demarcation point {sorted(pair)} is no longer present in the dds-proxy "
             "/service-demarcation-points endpoint"
         )

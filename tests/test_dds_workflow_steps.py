@@ -23,6 +23,7 @@ import importlib
 from types import SimpleNamespace
 
 import pytest
+from orchestrator.core.utils.errors import InconsistentDataError
 
 
 def _topology_subscription() -> SimpleNamespace:
@@ -49,7 +50,7 @@ def test_validate_topology_raises_when_gone(advertised: list[SimpleNamespace], m
     module = importlib.import_module("workflows.topology.validate_topology")
     monkeypatch.setattr(module, "fetch_topologies", lambda: advertised)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(InconsistentDataError):
         module.validate_topology_present_in_dds.__wrapped__(subscription=_topology_subscription())
 
 
@@ -85,7 +86,7 @@ def test_validate_switchingservice_raises_on_drift(
     module = importlib.import_module("workflows.switchingservice.validate_switchingservice")
     monkeypatch.setattr(module, "fetch_switching_services", lambda: advertised)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(InconsistentDataError):
         module.validate_switchingservice_present_in_dds.__wrapped__(subscription=_switchingservice_subscription())
 
 
@@ -110,7 +111,7 @@ def test_validate_sdp_raises_when_pair_gone(monkeypatch: pytest.MonkeyPatch) -> 
         module, "fetch_service_demarcation_points", lambda: [SimpleNamespace(stp_a_id="a", stp_z_id="c")]
     )
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(InconsistentDataError):
         module.validate_sdp_present_in_dds.__wrapped__(subscription=_sdp_subscription())
 
 
@@ -157,7 +158,7 @@ def test_validate_stp_raises_on_drift(advertised: list[SimpleNamespace], monkeyp
     module = importlib.import_module("workflows.stp.validate_stp")
     monkeypatch.setattr(module, "fetch_service_termination_points", lambda: advertised)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(InconsistentDataError):
         module.validate_stp_present_in_dds.__wrapped__(subscription=_stp_subscription())
 
 
