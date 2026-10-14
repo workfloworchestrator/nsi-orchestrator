@@ -52,11 +52,12 @@ from workflows.mdp2p.shared.vlans import (
     group_by_stp,
     held_reservations,
     reservations_vlan_pairs,
+    subscribed_sdps,
     vlan_ranges,
     vlan_set,
 )
 from workflows.sdp.shared.forms import stp_block_for, subscribed_sdp_pairs
-from workflows.shared import create_summary_form, fetch_for_form, subscription_ids_for_product_type
+from workflows.shared import create_summary_form, fetch_for_form
 
 # A VLAN id; the aggregator encodes it on the STP as "...?vlan=<n>".
 Vlan = Annotated[int, Ge(1), Le(4094)]
@@ -172,10 +173,7 @@ class SdpTopology:
 
 def sdp_topology() -> SdpTopology:
     """Load every SDP subscription once."""
-    sdps = {
-        str(sid): ServiceDemarcationPoint.from_subscription(sid).sdp
-        for sid in subscription_ids_for_product_type("ServiceDemarcationPoint")
-    }
+    sdps = {str(sid): sdp for sid, sdp in subscribed_sdps().items()}
     return SdpTopology(
         names={sid: sdp.sdp_name for sid, sdp in sdps.items()},
         stps={sid: (sdp.stps[0].stp_id, sdp.stps[1].stp_id) for sid, sdp in sdps.items()},

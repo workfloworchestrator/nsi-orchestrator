@@ -49,6 +49,7 @@
         "retry_reservation": "Retry reservation with corrected input",
         "task_validate_aggregator_against_subscriptions": "Validate aggregator against subscriptions",
         "task_validate_upas_against_vlans": "Validate uPA VLANs against the aggregator",
+        "task_validate_sdp_vlans": "Validate SDP VLANs",
         "terminate_mdp2p": "Terminate multi domain point to point",
         "terminate_sdp": "Terminate service demarcation point",
         "terminate_stp": "Terminate service termination point",
