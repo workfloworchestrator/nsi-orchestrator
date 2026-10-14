@@ -149,7 +149,9 @@ Both need the pgvector extension.
 - **The dependency cooldown is set twice.** `exclude-newer = "8 days"` in `pyproject.toml` and
   `minimumReleaseAge` in `.github/renovate.json` must stay equal. uv enforces it on indirect
   dependencies, which Renovate cannot. An urgent fix younger than that needs a temporary
-  `exclude-newer-package = { <pkg> = false }`.
+  `exclude-newer-package = { <pkg> = false }`. Lock file maintenance sets `minimumReleaseAge` to
+  `null`: it has no release timestamp, so Renovate would keep `renovate/stability-days` pending
+  forever and never automerge it.
 
 - **Register a system task with `create_task`, not `create_workflow`.** It belongs to no product, so
   it must not be linked into `products_workflows`. `create_task` inserts `target='SYSTEM'` and
