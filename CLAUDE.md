@@ -154,6 +154,9 @@ Both need the pgvector extension.
 - **Register a system task with `create_task`, not `create_workflow`.** It belongs to no product, so
   it must not be linked into `products_workflows`. `create_task` inserts `target='SYSTEM'` and
   `is_task=TRUE` itself, and requires a `description` (`workflows.description` is `NOT NULL`).
+- **Every registered workflow and task needs an entry under `workflow` in
+  `translations/en-GB.json`.** Core's nightly `task_validate_products` fails on any name missing
+  there; `tests/test_translations.py` runs the same lookup.
 - **`load-project-schedule` is only idempotent once a scheduler has run**, exactly as for core's
   `load-initial-schedule`: `add_unique_scheduled_task_to_queue` dedups against the
   `workflows_apscheduler_jobs` linker table, which is written when the scheduler drains the queue.
