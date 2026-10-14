@@ -21,8 +21,11 @@ from dataclasses import dataclass, replace
 from itertools import groupby
 from operator import itemgetter
 from typing import Any, Literal
+from uuid import UUID
 
+from products.product_blocks.sdp import ServiceDemarcationPointBlock
 from products.product_blocks.stp import ServiceTerminationPointBlock
+from products.product_types.sdp import ServiceDemarcationPoint
 from products.product_types.stp import ServiceTerminationPoint
 from services.aggregator_proxy import AggregatorReservation, UpaReservation
 from workflows.shared import subscription_ids_for_product_type
@@ -85,6 +88,14 @@ def subscribed_stps() -> list[ServiceTerminationPointBlock]:
         ServiceTerminationPoint.from_subscription(sid).stp
         for sid in subscription_ids_for_product_type("ServiceTerminationPoint")
     ]
+
+
+def subscribed_sdps() -> dict[UUID, ServiceDemarcationPointBlock]:
+    """The SDP product blocks of all non-terminated SDP subscriptions, by subscription id."""
+    return {
+        sid: ServiceDemarcationPoint.from_subscription(sid).sdp
+        for sid in subscription_ids_for_product_type("ServiceDemarcationPoint")
+    }
 
 
 def endpoint_vlan_pairs(endpoint: str | None) -> Iterator[StpVlan]:

@@ -347,7 +347,7 @@ OAUTH2_ACTIVE=false uv run uvicorn wsgi:app --host 0.0.0.0 --port 8080  # run th
 
 ## Scheduled tasks
 
-Alongside the per-subscription validators, two system tasks run on a schedule:
+Alongside the per-subscription validators, three system tasks run on a schedule:
 
 - **`task_validate_aggregator_against_subscriptions`** (nightly) — compares the aggregator's live
   reservations against the MDP2P subscriptions in both directions, reporting reservations with no
@@ -369,6 +369,10 @@ Alongside the per-subscription validators, two system tasks run on a schedule:
   are the ones the aggregator-proxy lists at `GET /providers` (those in the aggregator's DDS
   `peersWith`); STPs on a network none of them serves are listed as unchecked. Needs
   nsi-aggregator-proxy's `GET /providers` and `GET /providers/{nsaId}/reservations`.
+- **`task_validate_sdp_vlans`** (nightly) — checks that both STPs of every SDP allow exactly the
+  same VLANs, since a VLAN only one end allows cannot cross the SDP. It compares the stored VLAN
+  ranges, the ones the MDP2P create form offers from, and reports per SDP each STP's range and the
+  VLANs only that end allows. The same findings are in the step's `details`.
 
 Drift found by these tasks, or by a subscription's validate workflow, ends the run as
 `inconsistent_data`; an unreachable dds-proxy or aggregator-proxy ends it as plain `failed`.

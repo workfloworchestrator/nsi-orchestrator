@@ -77,8 +77,12 @@ Both need the pgvector extension.
   instead of showing as missing on the uPA. A uPA reservation is not filtered on `requesterNSA`, so
   a VLAN another requester holds on one of our STPs is reported too: the create form would offer it.
   A proxy outage is left to propagate, so it ends as plain `failed` rather than as drift.
+  `validate_sdp_vlans.py` fails on any SDP whose two STPs do not allow exactly the same VLANs. It
+  reads the stored `label_group`, not the DDS: that is what the MDP2P forms offer from, and
+  `validate_stp` already reports when it drifts from the DDS. A nightly task rather than a step in
+  `validate_sdp`, so one run reports every mismatching SDP.
 - `workflows/mdp2p/shared/vlans.py` — the VLAN accounting both the MDP2P forms and that task use:
-  VLAN spec parsing, `subscribed_stps`, and which `(stp_id, vlan)` pairs aggregator and uPA
+  VLAN spec parsing, `subscribed_stps`/`subscribed_sdps`, and which `(stp_id, vlan)` pairs aggregator and uPA
   reservations hold (both rules side by side). It imports no form machinery, so a system task can
   use it without loading the form stack.
 - `schedules.py` — this project's cron entries, registered through core's schedule API by the
@@ -179,7 +183,7 @@ Both need the pgvector extension.
   handler no longer sets a NOC assignee at all. Before 5.4.0 it was the other way round. A proxy
   `RuntimeError` (`DdsProxyError` / `AggregatorProxyError`) lands in plain `failed` too; let it
   propagate rather than wrap it, so an outage is not reported as drift. Every `validate_*` workflow
-  and both system tasks follow this (they are all registered with `is_task`, which the mapping
+  and every system task follows this (they are all registered with `is_task`, which the mapping
   requires); `test_tasks.py` pins core's mapping so an orchestrator-core upgrade that changes it
   fails the suite.
 

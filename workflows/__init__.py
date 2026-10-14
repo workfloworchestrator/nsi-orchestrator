@@ -18,6 +18,7 @@ LazyWorkflowInstance(
     "task_validate_aggregator_against_subscriptions",
 )
 LazyWorkflowInstance("workflows.tasks.validate_upas_against_vlans", "task_validate_upas_against_vlans")
+LazyWorkflowInstance("workflows.tasks.validate_sdp_vlans", "task_validate_sdp_vlans")
 
 LazyWorkflowInstance("workflows.topology.create_topology", "create_topology")
 LazyWorkflowInstance("workflows.topology.modify_topology", "modify_topology")
