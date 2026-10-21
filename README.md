@@ -185,7 +185,9 @@ workflows manage its lifecycle:
 - **Create** — presents a dropdown of the STP pairs the DDS Proxy returns whose *both* STPs are
   already subscribed, and links the two STP blocks into the SDP.
 - **Modify** — change the `sdp_name`.
-- **Validate** — assert the SDP's STP pair is still advertised by the DDS Proxy.
+- **Validate** — assert the SDP's STP pair is still advertised by the DDS Proxy, and that both STPs
+  allow exactly the same VLANs, since a VLAN only one end allows cannot cross the SDP. It reports
+  each STP's range and the VLANs only that end allows, also in the step's `details`.
 - **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
 
 ## Multi domain point-to-point product
@@ -347,7 +349,7 @@ OAUTH2_ACTIVE=false uv run uvicorn wsgi:app --host 0.0.0.0 --port 8080  # run th
 
 ## Scheduled tasks
 
-Alongside the per-subscription validators, three system tasks run on a schedule:
+Alongside the per-subscription validators, two system tasks run on a schedule:
 
 - **`task_validate_aggregator_against_subscriptions`** (nightly) — compares the aggregator's live
   reservations against the MDP2P subscriptions in both directions, reporting reservations with no
@@ -369,10 +371,10 @@ Alongside the per-subscription validators, three system tasks run on a schedule:
   are the ones the aggregator-proxy lists at `GET /providers` (those in the aggregator's DDS
   `peersWith`); STPs on a network none of them serves are listed as unchecked. Needs
   nsi-aggregator-proxy's `GET /providers` and `GET /providers/{nsaId}/reservations`.
-- **`task_validate_sdp_vlans`** (nightly) — checks that both STPs of every SDP allow exactly the
-  same VLANs, since a VLAN only one end allows cannot cross the SDP. It compares the stored VLAN
-  ranges, the ones the MDP2P create form offers from, and reports per SDP each STP's range and the
-  VLANs only that end allows. The same findings are in the step's `details`.
+
+Core's `task_validate_subscriptions` starts the per-subscription validators nightly, for in-sync
+subscriptions only. A failed validation leaves its subscription out of sync, so it is not validated
+again, and does not fail again, until that process is retried and passes.
 
 Drift found by these tasks, or by a subscription's validate workflow, ends the run as
 `inconsistent_data`; an unreachable dds-proxy or aggregator-proxy ends it as plain `failed`.

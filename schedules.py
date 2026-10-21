@@ -34,12 +34,6 @@ NSI_SCHEDULES: list[dict] = [
         "trigger": "cron",
         "trigger_kwargs": {"hour": 2, "minute": 10},
     },
-    {
-        "name": "Validate SDP VLANs",
-        "workflow_name": "task_validate_sdp_vlans",
-        "trigger": "cron",
-        "trigger_kwargs": {"hour": 2, "minute": 40},
-    },
 ]
 
 

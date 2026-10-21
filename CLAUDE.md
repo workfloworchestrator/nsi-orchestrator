@@ -77,11 +77,7 @@ Both need the pgvector extension.
   instead of showing as missing on the uPA. A uPA reservation is not filtered on `requesterNSA`, so
   a VLAN another requester holds on one of our STPs is reported too: the create form would offer it.
   A proxy outage is left to propagate, so it ends as plain `failed` rather than as drift.
-  `validate_sdp_vlans.py` fails on any SDP whose two STPs do not allow exactly the same VLANs. It
-  reads the stored `label_group`, not the DDS: that is what the MDP2P forms offer from, and
-  `validate_stp` already reports when it drifts from the DDS. A nightly task rather than a step in
-  `validate_sdp`, so one run reports every mismatching SDP.
-- `workflows/mdp2p/shared/vlans.py` — the VLAN accounting both the MDP2P forms and that task use:
+- `workflows/mdp2p/shared/vlans.py` — the VLAN accounting the MDP2P forms and the uPA task use:
   VLAN spec parsing, `subscribed_stps`/`subscribed_sdps`, and which `(stp_id, vlan)` pairs aggregator and uPA
   reservations hold (both rules side by side). It imports no form machinery, so a system task can
   use it without loading the form stack.
@@ -177,6 +173,11 @@ Both need the pgvector extension.
   The predicate counts `failed` / `inconsistent_data` / `api_unavailable` as uncompleted, and
   `task_clean_up_tasks` only reaps `completed`, so the first failure would block every later run —
   silently, logged at INFO by the scheduler. A nightly cron cannot overlap a task that takes seconds.
+- **A per-subscription check belongs in the product's `validate_*` workflow, not in a system task.**
+  A failed validation takes the subscription out of sync, and core's `task_validate_subscriptions`
+  skips those, so it fails once rather than every night. A system task adds a failed run each night
+  until the drift is fixed; the aggregator and uPA tasks accept that, since their findings need not
+  belong to one subscription.
 - **Raise `InconsistentDataError` for drift, not `AssertionError`.** Since orchestrator-core 5.4.0
   (#1882) `_default_process_func` in `services/processes.py` maps only `InconsistentDataError` to
   `ProcessStatus.INCONSISTENT_DATA`; an `AssertionError` lands in plain `failed`, and the default
