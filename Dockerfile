@@ -14,6 +14,8 @@ RUN uv build --no-cache --wheel --out-dir dist \
 
 # Final stage
 FROM ghcr.io/astral-sh/uv:python3.13-alpine@sha256:e952f997ae794df0caf62bf814831d01b34e9141d1f3850d3cdc659c1790b18b
+# Drops emSign ECC Root CA - G3 (ca-certificates 20261020); remove once the base image has it.
+RUN apk upgrade --no-cache ca-certificates ca-certificates-bundle
 COPY --from=build /app/dist/*.whl /app/dist/requirements.txt /tmp/
 # Dependencies come from the exported lock; a fresh resolve picks up releases without a musl wheel.
 RUN uv pip install --system --no-cache -r /tmp/requirements.txt \
