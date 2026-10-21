@@ -452,5 +452,7 @@ helpers, the connection state machine, the `description` builders, and the indiv
 The integration tests under `tests/workflows/` run the real workflows end-to-end against a throwaway
 `nsi-test` database: a session fixture recreates and migrates it (pgvector required), each test runs in
 a transaction that is rolled back afterwards, and the DDS and Aggregator proxies are mocked at the
-service boundary. Set `DATABASE_URI` to a `nsi-test` database (the CI job uses
-`postgresql+psycopg://nsi:nsi@localhost/nsi-test` against a `pgvector/pgvector:pg16` service).
+service boundary. With `DATABASE_URI` unset, the tests use
+`postgresql+psycopg://nsi:nsi@localhost/nsi-test`, the URI the CI job sets against a
+`pgvector/pgvector:pg16` service. The fixture drops whatever database `DATABASE_URI` names, so never run
+the tests with it pointing at a database you want to keep.

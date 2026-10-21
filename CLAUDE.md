@@ -22,13 +22,14 @@ uv run python main.py db upgrade heads             # apply migrations
 OAUTH2_ACTIVE=false uv run uvicorn wsgi:app --port 8080  # run the API (auth off for local dev)
 uv run ruff check . && uv run ruff format --check . # lint + format
 uv run mypy .                                      # types (strict, whole tree except migrations)
-uv run pytest                                      # tests (needs an nsi-test DB with pgvector)
+env -u DATABASE_URI uv run pytest                  # tests, against a throwaway nsi-test DB
 ```
 
-**Always `export DATABASE_URI` before `db`/`generate`/`pytest`.** Without it, orchestrator-core falls
-back to its built-in `nwa:nwa@localhost/orchestrator-core` default — a different, drifted scratch DB.
-The local dev DB is `nsi`; pytest's integration harness creates and migrates a throwaway `nsi-test`.
-Both need the pgvector extension.
+**Export `DATABASE_URI` before `db`/`generate`, never before `pytest`.** Without it, `db`/`generate`
+fall back to orchestrator-core's built-in `nwa:nwa@localhost/orchestrator-core`, a different, drifted
+scratch DB. pytest's integration harness **drops** and recreates whatever DB `DATABASE_URI` names,
+and only defaults it to `nsi-test` when it is unset; run with the dev URI exported, it wipes the
+local dev DB `nsi`. Both need the pgvector extension.
 
 ## Layout
 
