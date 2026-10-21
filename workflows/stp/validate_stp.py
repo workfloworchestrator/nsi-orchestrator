@@ -19,6 +19,7 @@ from pydantic_forms.types import State
 
 from products.product_types.stp import ServiceTerminationPoint
 from services.dds_proxy import fetch_service_termination_points
+from workflows.mdp2p.shared.vlans import stranded_lines, vlans_outside
 
 logger = structlog.get_logger(__name__)
 
@@ -53,6 +54,18 @@ def validate_stp_present_in_dds(subscription: ServiceTerminationPoint) -> State:
     return {"subscription": subscription}
 
 
+@step("Validate subscriptions only use VLANs within the service termination point's range")
+def validate_stp_vlans_in_range(subscription: ServiceTerminationPoint) -> None:
+    """Assert every VLAN an MDP2P subscription stores on this STP is within its stored range."""
+    stp = subscription.stp
+    if stranded := vlans_outside(stp.stp_id, stp.label_group):
+        raise InconsistentDataError(
+            f"Subscriptions use VLANs outside the range {stp.label_group} of {stp.stp_id}:\n"
+            + stranded_lines(stranded),
+            {"stranded": stranded},
+        )
+
+
 @validate_workflow()
 def validate_stp() -> StepList:
-    return begin >> validate_stp_present_in_dds
+    return begin >> validate_stp_present_in_dds >> validate_stp_vlans_in_range

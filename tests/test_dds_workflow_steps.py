@@ -178,6 +178,8 @@ def test_reconcile_stp_dds_attributes(
         "fetch_service_termination_points",
         lambda: [SimpleNamespace(id=advertised_id, capacity_mbits=4000, label_group="2000-2999")],
     )
+    # No subscription stores a VLAN on the STP; the refusal is covered end to end.
+    monkeypatch.setattr(module, "vlans_outside", lambda _stp_id, _label_group: {})
 
     subscription = SimpleNamespace(stp=SimpleNamespace(stp_id="x", capacity=1000, label_group="1000-1999"))
     result = module.reconcile_dds_attributes.__wrapped__(subscription=subscription)

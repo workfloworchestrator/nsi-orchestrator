@@ -13,18 +13,24 @@
 
 """VLAN accounting: which VLANs the orchestrator administers, and which an aggregator or uPA holds.
 
-Shared by the MDP2P forms, which offer the free VLANs, and the nightly uPA check. No form imports.
+Shared by the MDP2P forms, which offer the free VLANs, the nightly uPA check and the STP workflows.
+No form imports.
 """
 
 from collections.abc import Callable, Hashable, Iterable, Iterator
 from dataclasses import dataclass, replace
-from itertools import groupby
+from itertools import chain, groupby
 from operator import itemgetter
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
+from orchestrator.core.domain.base import SubscriptionModel
+
 from products.product_blocks.sdp import ServiceDemarcationPointBlock
+from products.product_blocks.sdp_constraint import ConstraintType, SdpConstraintBlockInactive
 from products.product_blocks.stp import ServiceTerminationPointBlock
+from products.product_blocks.vc import VirtualCircuitBlockInactive
+from products.product_types.mdp2p import MultiDomainPoint2PointInactive
 from products.product_types.sdp import ServiceDemarcationPoint
 from products.product_types.stp import ServiceTerminationPoint
 from services.aggregator_proxy import AggregatorReservation, UpaReservation
@@ -96,6 +102,46 @@ def subscribed_sdps() -> dict[UUID, ServiceDemarcationPointBlock]:
         sid: ServiceDemarcationPoint.from_subscription(sid).sdp
         for sid in subscription_ids_for_product_type("ServiceDemarcationPoint")
     }
+
+
+def pinned_sdp_vlans(constraints: Iterable[SdpConstraintBlockInactive]) -> set[StpVlan]:
+    """Both STPs of every included SDP the user pinned a VLAN on, with that VLAN."""
+    return {
+        (stp.stp_id, constraint.vlan)
+        for constraint in constraints
+        if constraint.constraint_type == ConstraintType.INCLUDE and constraint.sdp and constraint.vlan is not None
+        for stp in constraint.sdp.stps
+        if stp.stp_id
+    }
+
+
+def _stored_vlans(vc: VirtualCircuitBlockInactive) -> Iterator[StpVlan]:
+    """Both SAP VLANs, and each pinned SDP VLAN on both STPs of its SDP."""
+    saps = ((sap.stp.stp_id, int(sap.vlan)) for sap in vc.saps if sap.stp and sap.stp.stp_id and sap.vlan)
+    return chain(saps, pinned_sdp_vlans(vc.sdp_constraints))
+
+
+def vlans_outside(stp_id: str, label_group: str) -> dict[int, list[str]]:
+    """The VLANs non-terminated MDP2P subscriptions store on ``stp_id`` outside ``label_group``, with their ids.
+
+    Any lifecycle counts, so a circuit stuck mid-create does too. PCE-chosen SDP VLANs are not stored.
+    """
+    allowed = vlan_set(label_group)
+    pairs = (
+        (vlan, str(sid))
+        for sid in subscription_ids_for_product_type("MultiDomainPoint2Point")
+        # A lifecycle subclass refuses a subscription in another lifecycle; the base resolves it.
+        for pair_stp_id, vlan in _stored_vlans(
+            cast(MultiDomainPoint2PointInactive, SubscriptionModel.from_subscription(sid)).vc
+        )
+        if pair_stp_id == stp_id and vlan not in allowed
+    )
+    return {vlan: sorted(ids) for vlan, ids in group_pairs(pairs, sort_key=int).items()}
+
+
+def stranded_lines(stranded: dict[int, list[str]]) -> str:
+    """``vlans_outside``'s result as indented lines for an error message."""
+    return "\n".join(f"    VLAN {vlan}: subscription {', '.join(ids)}" for vlan, ids in stranded.items())
 
 
 def endpoint_vlan_pairs(endpoint: str | None) -> Iterator[StpVlan]:

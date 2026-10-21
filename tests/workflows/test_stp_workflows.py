@@ -83,6 +83,60 @@ def test_reconcile_stp_syncs_dds_attributes(stp_subscriptions: dict[str, str], m
     assert stp.label_group == "3000-3999"
 
 
+def test_reconcile_stp_accepts_a_narrower_range_that_keeps_subscribed_vlans(
+    stp_subscriptions: dict[str, str], mdp2p_subscription: str, dds: dict[str, list[dict[str, object]]]
+) -> None:
+    # The seed MDP2P's source SAP is VLAN 1500 on urn:stp1.
+    dds["/service-termination-points"][0]["labelGroup"] = "1400-1600"
+
+    result, _, _ = run_workflow("reconcile_stp", [{"subscription_id": stp_subscriptions["urn:stp1"]}])
+
+    assert_complete(result)
+    assert ServiceTerminationPoint.from_subscription(stp_subscriptions["urn:stp1"]).stp.label_group == "1400-1600"
+
+
+@pytest.mark.parametrize(
+    "label_group",
+    [
+        pytest.param("1000-1499", id="narrower"),
+        pytest.param("1000-1499,1501-1999", id="only-the-sap-vlan-left-out"),
+    ],
+)
+def test_reconcile_stp_refuses_a_range_that_strands_a_subscribed_vlan(
+    stp_subscriptions: dict[str, str],
+    mdp2p_subscription: str,
+    dds: dict[str, list[dict[str, object]]],
+    label_group: str,
+) -> None:
+    dds["/service-termination-points"][0]["labelGroup"] = label_group
+
+    result, _, _ = run_workflow("reconcile_stp", [{"subscription_id": stp_subscriptions["urn:stp1"]}])
+
+    assert_failed(result)
+    state = extract_state(result)
+    assert state["class"] == "InconsistentDataError"
+    assert f"VLAN 1500: subscription {mdp2p_subscription}" in str(extract_error(result))
+    assert state["details"] == {"label_group": label_group, "stranded": {"1500": [mdp2p_subscription]}}
+
+
+def test_validate_stp_reports_a_subscribed_vlan_outside_its_range(
+    stp_subscriptions: dict[str, str], mdp2p_subscription: str, dds: dict[str, list[dict[str, object]]]
+) -> None:
+    """A VLAN stranded before reconcile refused it: stored range and DDS agree, the SAP VLAN is outside."""
+    stp1 = ServiceTerminationPoint.from_subscription(stp_subscriptions["urn:stp1"])
+    stp1.stp.label_group = "1000-1499"
+    stp1.save()
+    dds["/service-termination-points"][0]["labelGroup"] = "1000-1499"
+
+    result, _, _ = run_workflow("validate_stp", [{"subscription_id": stp_subscriptions["urn:stp1"]}])
+
+    assert_failed(result)
+    state = extract_state(result)
+    assert state["class"] == "InconsistentDataError"
+    assert f"VLAN 1500: subscription {mdp2p_subscription}" in str(extract_error(result))
+    assert state["details"] == {"stranded": {"1500": [mdp2p_subscription]}}
+
+
 def test_validate_stp_detects_switching_service_drift(
     stp_subscriptions: dict[str, str], dds: dict[str, list[dict[str, object]]]
 ) -> None:

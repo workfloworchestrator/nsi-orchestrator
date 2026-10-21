@@ -80,7 +80,8 @@ Both need the pgvector extension.
 - `workflows/mdp2p/shared/vlans.py` — the VLAN accounting the MDP2P forms and the uPA task use:
   VLAN spec parsing, `subscribed_stps`/`subscribed_sdps`, and which `(stp_id, vlan)` pairs aggregator and uPA
   reservations hold (both rules side by side). It imports no form machinery, so a system task can
-  use it without loading the form stack.
+  use it without loading the form stack. `vlans_outside` lists the VLANs MDP2P subscriptions store
+  on an STP outside a range: `reconcile_stp` refuses such a range, `validate_stp` reports one.
 - `schedules.py` — this project's cron entries, registered through core's schedule API by the
   `scheduler load-project-schedule` command that `main.py` attaches to core's `scheduler` sub-app.
   It runs as its own scheduler init container, after the one that loops on `load-initial-schedule`

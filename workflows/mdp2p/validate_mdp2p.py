@@ -17,11 +17,10 @@ from orchestrator.core.workflow import StepList, begin, step
 from orchestrator.core.workflows.utils import validate_workflow
 from pydantic_forms.types import State
 
-from products.product_blocks.sdp_constraint import ConstraintType, SdpConstraintBlock
 from products.product_types.mdp2p import MultiDomainPoint2Point
 from services import aggregator_proxy
 from workflows.mdp2p.shared.fsm import ConnectionState
-from workflows.mdp2p.shared.vlans import StpVlan, reservations_vlan_pairs
+from workflows.mdp2p.shared.vlans import pinned_sdp_vlans, reservations_vlan_pairs
 
 logger = structlog.get_logger(__name__)
 
@@ -62,7 +61,7 @@ def validate_reservation(subscription: MultiDomainPoint2Point) -> State:
         )
 
     # Only a reserved or activated connection holds its whole path; an earlier or failed one may not.
-    pinned = _pinned_sdp_vlans(vc.sdp_constraints) if vc.state in _PATH_HELD_STATES else set()
+    pinned = pinned_sdp_vlans(vc.sdp_constraints) if vc.state in _PATH_HELD_STATES else set()
     if missing := sorted(pinned - reservations_vlan_pairs([reservation])):
         raise InconsistentDataError(
             "Aggregator path does not hold the pinned SDP VLAN on: "
@@ -70,16 +69,6 @@ def validate_reservation(subscription: MultiDomainPoint2Point) -> State:
         )
 
     return {"subscription": subscription}
-
-
-def _pinned_sdp_vlans(constraints: list[SdpConstraintBlock]) -> set[StpVlan]:
-    """Both STPs of every included SDP the user pinned a VLAN on, with that VLAN."""
-    return {
-        (stp.stp_id, constraint.vlan)
-        for constraint in constraints
-        if constraint.constraint_type == ConstraintType.INCLUDE and constraint.vlan is not None
-        for stp in constraint.sdp.stps
-    }
 
 
 @validate_workflow()

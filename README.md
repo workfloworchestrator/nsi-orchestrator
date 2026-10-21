@@ -171,10 +171,13 @@ bit/s. Five workflows manage its lifecycle:
   `label_group` and parent switching service still match the DDS; drift fails the validation and
   signals that a reconcile is needed (the editable `stp_name` is deliberately not checked). Reconcile
   repairs `capacity` and `label_group`, but never re-parents an STP, so that drift needs an operator.
+  It also fails when an MDP2P subscription stores a VLAN on the STP (a SAP VLAN, or a pinned SDP
+  VLAN) outside its `label_group`, naming those subscriptions.
 - **Terminate** — remove the subscription; the DDS is read-only, so nothing is deprovisioned.
 - **Reconcile** — re-read the STP from the DDS Proxy and update its DDS-derived `capacity` and
   `label_group` (VLAN range) if they changed; if the STP is no longer advertised the stored values
-  are left untouched.
+  are left untouched. A range that would leave out a VLAN an MDP2P subscription stores is refused
+  and nothing is updated; move or terminate those subscriptions and retry.
 
 ## Service demarcation point product
 
