@@ -17,7 +17,7 @@ from uuid import UUID
 import structlog
 from orchestrator.core.forms import FormPage
 from orchestrator.core.forms.validators import DisplaySubscription
-from orchestrator.core.workflow import StepList, begin, callback_step, conditional, step
+from orchestrator.core.workflow import StepList, begin, callback_step, conditional, retrystep, step
 from orchestrator.core.workflows.utils import terminate_workflow
 from pydantic import Field
 from pydantic_forms.types import InputForm, State, UUIDstr
@@ -36,6 +36,10 @@ TERMINABLE_STATES = frozenset({ConnectionState.RESERVED, ConnectionState.FAILED,
 
 # Nothing to tear down when the aggregator has already terminated the connection.
 still_at_aggregator = conditional(lambda state: state["subscription"]["vc"]["state"] != ConnectionState.TERMINATED)
+
+
+class TerminateNotConfirmedError(RuntimeError):
+    """The aggregator has not terminated the connection yet."""
 
 
 def terminate_initial_input_form_generator(subscription_id: UUIDstr, customer_id: UUIDstr) -> InputForm:
@@ -62,19 +66,60 @@ def terminate_connection(subscription: MultiDomainPoint2Point, callback_route: s
 
 
 @step("Process terminate result")
-def process_terminate_result(subscription: MultiDomainPoint2Point, callback_result: dict) -> State:
+def process_terminate_result(subscription: State, callback_result: dict) -> State:
+    """Log the result; whether the connection is gone is decided by ``confirm_terminated``."""
+    logger.info(
+        "terminate result",
+        connection_id=subscription["vc"]["connection_id"],
+        status=callback_result.get("status"),
+        last_error=callback_result.get("lastError"),
+    )
+    return {}
+
+
+@retrystep("Confirm the aggregator terminated the connection")
+def confirm_terminated(subscription: State) -> State:
+    """Retried until the aggregator reports TERMINATED, sending terminate again on each attempt.
+
+    A callback is not enough: a child's lost reply leaves the aggregator still terminating. A child
+    that already terminated refuses the resend with lifecycle TERMINATED, which counts as confirmed.
+    """
+    connection_id = subscription["vc"]["connection_id"]
+    reservation = aggregator_proxy.get_reservation(connection_id)
+    if reservation.status == ConnectionState.TERMINATED:
+        return {}
+    detail = f"Aggregator reports {reservation.status} for {connection_id}"
+    if reservation.last_error:
+        detail += f" ({reservation.last_error})"
+    try:
+        aggregator_proxy.terminate(connection_id)
+        outcome = "terminate sent again"
+    except aggregator_proxy.AggregatorProxyError as error:
+        outcome = f"terminate not accepted: {error}"
+    raise TerminateNotConfirmedError(f"{detail}; {outcome}")
+
+
+@step("Record the connection as terminated")
+def record_terminated(subscription: MultiDomainPoint2Point) -> State:
     subscription.vc.state = apply(subscription.vc.state, "terminate")
     subscription.description = description(subscription)
     return {"subscription": subscription}
 
 
-@terminate_workflow(initial_input_form=terminate_initial_input_form_generator)
-def terminate_mdp2p() -> StepList:
-    return begin >> still_at_aggregator(
-        callback_step(
+def terminate_at_aggregator() -> StepList:
+    """Terminate the connection and wait until the aggregator itself reports it TERMINATED."""
+    return (
+        begin
+        >> callback_step(
             name=f"Terminate connection (timeout {settings.aggregator_callback_timeout} seconds)",
             action_step=terminate_connection,
             validate_step=process_terminate_result,
             timeout=settings.aggregator_callback_timeout,
         )
+        >> confirm_terminated
     )
+
+
+@terminate_workflow(initial_input_form=terminate_initial_input_form_generator)
+def terminate_mdp2p() -> StepList:
+    return begin >> still_at_aggregator(terminate_at_aggregator() >> record_terminated)

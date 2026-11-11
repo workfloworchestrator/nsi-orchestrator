@@ -29,9 +29,11 @@ from tests.workflows import (
     assert_awaiting_callback,
     assert_complete,
     assert_failed,
+    assert_waiting,
     extract_state,
     product_id,
     resume_callback,
+    resume_waiting,
     run_workflow,
 )
 from tests.workflows.conftest import MDP2P_CREATE_FORM as _CREATE_FORM
@@ -120,16 +122,34 @@ def failed_mdp2p_subscription(stp_subscriptions: dict[str, str], sdp_subscriptio
     return subscription_id
 
 
+def _stub_terminate(
+    monkeypatch: pytest.MonkeyPatch, *statuses: str, last_error: str | None = None
+) -> list[tuple[object, ...]]:
+    """Stub terminate and the status read back after it, one of ``statuses`` per read; return the terminates."""
+    served = iter(statuses)
+    terminates: list[tuple[object, ...]] = []
+    monkeypatch.setattr(aggregator_proxy, "terminate", lambda *args: terminates.append(args))
+    monkeypatch.setattr(
+        aggregator_proxy,
+        "get_reservation",
+        lambda cid: AggregatorReservation(
+            connection_id=cid, description="d", status=next(served), last_error=last_error
+        ),
+    )
+    return terminates
+
+
 def test_retry_reservation_terminates_the_old_connection_and_reserves_again(
     failed_mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls: list[tuple[str, object]] = []
+    """The old id is dropped, and a new reservation made, only once the aggregator reports TERMINATED."""
+    terminates = _stub_terminate(monkeypatch, "TERMINATING", "TERMINATED", last_error="no reply")
+    reserves: list[object] = []
 
     def fake_reserve(**kwargs: object) -> str:
-        calls.append(("reserve", kwargs))
+        reserves.append(kwargs)
         return "conn-2"
 
-    monkeypatch.setattr(aggregator_proxy, "terminate", lambda cid, _url: calls.append(("terminate", cid)))
     monkeypatch.setattr(aggregator_proxy, "reserve", fake_reserve)
     before = MultiDomainPoint2Point.from_subscription(failed_mdp2p_subscription).vc
 
@@ -138,14 +158,23 @@ def test_retry_reservation_terminates_the_old_connection_and_reserves_again(
         "retry_reservation", [{"subscription_id": failed_mdp2p_subscription}, form, {}]
     )
     assert_awaiting_callback(result)
-    result, step_log = resume_callback(process, step_log, {"status": "TERMINATED"})
+    result, step_log = resume_callback(process, step_log, {"status": "TERMINATING"})
+
+    # Still terminating: the terminate is sent again, without a callbackURL, and nothing is reserved.
+    assert_waiting(result)
+    assert extract_state(result)["class"] == "TerminateNotConfirmedError"
+    assert "no reply" in str(extract_state(result)["error"])
+    assert terminates[0][0] == "conn-1"
+    assert terminates[1:] == [("conn-1",)]
+    assert reserves == []
+    assert MultiDomainPoint2Point.from_subscription(failed_mdp2p_subscription).vc.connection_id == "conn-1"
+
+    result, step_log = resume_waiting(process, step_log)
     assert_awaiting_callback(result)
     result, _ = resume_callback(process, step_log, {"status": "RESERVED", "connectionId": "conn-2"})
     assert_complete(result)
 
-    assert [name for name, _ in calls] == ["terminate", "reserve"]
-    assert calls[0][1] == "conn-1"
-
+    assert len(reserves) == 1
     after = MultiDomainPoint2Point.from_subscription(failed_mdp2p_subscription).vc
     assert after.state == "RESERVED"
     assert after.connection_id == "conn-2"
@@ -328,16 +357,40 @@ def test_validate_mdp2p_checks_a_pinned_sdp_vlan_against_the_path(
         assert f"{PATH_STPS['a_to_b']}?vlan=1500" in str(extract_state(result)["error"])
 
 
-def test_terminate_mdp2p(mdp2p_subscription: str) -> None:
+def test_terminate_mdp2p(mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The subscription closes once the aggregator itself reports TERMINATED, whatever the callback said."""
+    terminates = _stub_terminate(monkeypatch, "TERMINATED")
+
     result, process, step_log = run_workflow("terminate_mdp2p", [{"subscription_id": mdp2p_subscription}, {}])
     assert_awaiting_callback(result)
-
-    result, _ = resume_callback(process, step_log, {"status": "TERMINATED"})
+    result, _ = resume_callback(process, step_log, {"status": "TERMINATING"})
 
     assert_complete(result)
     subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
-    assert subscription.vc.state == "TERMINATED"
-    assert subscription.status == SubscriptionLifecycle.TERMINATED
+    assert (subscription.vc.state, subscription.status) == ("TERMINATED", SubscriptionLifecycle.TERMINATED)
+    assert len(terminates) == 1  # only the one carrying the callbackURL
+
+
+def test_terminate_mdp2p_waits_until_a_later_attempt_is_confirmed(
+    mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Until the aggregator reports TERMINATED the subscription stays; core resumes the waiting process hourly."""
+    terminates = _stub_terminate(monkeypatch, "TERMINATING", "TERMINATED")
+
+    result, process, step_log = run_workflow("terminate_mdp2p", [{"subscription_id": mdp2p_subscription}, {}])
+    result, step_log = resume_callback(process, step_log, {"status": "TERMINATING"})
+
+    assert_waiting(result)
+    assert extract_state(result)["class"] == "TerminateNotConfirmedError"
+    subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
+    assert (subscription.vc.state, subscription.status) == ("RESERVED", SubscriptionLifecycle.ACTIVE)
+    assert terminates[1:] == [("conn-1",)]  # the resend has no callbackURL
+
+    result, _ = resume_waiting(process, step_log)
+
+    assert_complete(result)
+    subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
+    assert (subscription.vc.state, subscription.status) == ("TERMINATED", SubscriptionLifecycle.TERMINATED)
 
 
 def test_terminate_mdp2p_closes_an_already_terminated_connection(

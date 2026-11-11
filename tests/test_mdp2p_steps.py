@@ -63,24 +63,6 @@ def _vc_sub(**vc_fields: object) -> SimpleNamespace:
         pytest.param(
             "release_mdp2p", "process_release_result", "ACTIVATED", "FAILED", "FAILED", "boom", id="release-failed"
         ),
-        pytest.param(
-            "terminate_mdp2p",
-            "process_terminate_result",
-            "RESERVED",
-            "TERMINATED",
-            "TERMINATED",
-            "earlier",
-            id="terminate-reserved",
-        ),
-        pytest.param(
-            "terminate_mdp2p",
-            "process_terminate_result",
-            "FAILED",
-            "TERMINATED",
-            "TERMINATED",
-            "earlier",
-            id="terminate-failed",
-        ),
     ],
 )
 def test_process_step_sets_state_and_refreshes_description(
@@ -106,11 +88,69 @@ def test_process_step_sets_state_and_refreshes_description(
     assert updated.description == f"desc({expected_state})"
 
 
+@pytest.mark.parametrize("start_state", ["RESERVED", "FAILED"])
+def test_record_terminated_keeps_the_last_error(start_state: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A terminated circuit still shows why it failed."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    monkeypatch.setattr(module, "description", lambda sub: f"desc({sub.vc.state})")
+
+    result = module.record_terminated.__wrapped__(
+        subscription=_vc_sub(state=start_state, connection_id="c1", last_error="earlier")
+    )
+
+    assert result["subscription"].vc.state == "TERMINATED"
+    assert result["subscription"].vc.last_error == "earlier"
+    assert result["subscription"].description == "desc(TERMINATED)"
+
+
+@pytest.mark.parametrize(
+    ("aggregator_status", "resend_error", "expected_error"),
+    [
+        pytest.param("TERMINATED", None, None, id="terminated"),
+        # A child that never confirmed: the aggregator is still terminating, whatever the callback said.
+        pytest.param("TERMINATING", None, "TERMINATING.*a child did not reply.*sent again", id="still-terminating"),
+        pytest.param("RESERVED", None, "RESERVED.*a child did not reply.*sent again", id="terminate-not-taken"),
+        # The error an operator reads still names the aggregator's status when the proxy refuses the resend.
+        pytest.param(
+            "TERMINATING", "failed: 422", "TERMINATING.*a child did not reply.*not accepted.*422", id="refused"
+        ),
+    ],
+)
+def test_confirm_terminated(
+    aggregator_status: str, resend_error: str | None, expected_error: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the aggregator's own TERMINATED counts; otherwise terminate is sent again and the step waits."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    sent: list[tuple[object, ...]] = []
+
+    def terminate(*args: object) -> None:
+        sent.append(args)
+        if resend_error:
+            raise module.aggregator_proxy.AggregatorProxyError(resend_error)
+
+    monkeypatch.setattr(
+        module.aggregator_proxy,
+        "get_reservation",
+        lambda cid: SimpleNamespace(status=aggregator_status, last_error="a child did not reply"),
+    )
+    monkeypatch.setattr(module.aggregator_proxy, "terminate", terminate)
+    step = module.confirm_terminated.__wrapped__
+
+    if expected_error is None:
+        assert step(subscription={"vc": {"connection_id": "c1"}}) == {}
+        assert sent == []
+    else:
+        with pytest.raises(module.TerminateNotConfirmedError, match=expected_error):
+            step(subscription={"vc": {"connection_id": "c1"}})
+        assert sent == [("c1",)]  # without a callbackURL: nothing awaits one
+
+
 @pytest.mark.parametrize(
     ("start_state", "aggregator_status", "expected_state", "expected_error"),
     [
         pytest.param("RESERVED", "FAILED", "FAILED", "aggregator says", id="drift-synced"),
         pytest.param("RESERVED", "ACTIVATING", "RESERVED", "earlier", id="transient-left-alone"),
+        pytest.param("RESERVED", "TERMINATING", "RESERVED", "earlier", id="terminating-left-alone"),
         pytest.param("FAILED", "FAILED", "FAILED", "aggregator says", id="in-sync-error-backfilled"),
     ],
 )

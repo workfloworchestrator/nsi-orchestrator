@@ -17,7 +17,7 @@ Repairs a subscription whose ``vc.state`` drifted from the aggregator — typica
 was missed after a network problem. It reads ``GET /reservations/{connectionId}`` and, when the
 aggregator reports a resting state that differs, updates ``vc.state`` directly: this is a repair to
 ground truth, so it deliberately bypasses the FSM transition guard (the result is always a valid
-state). Transient aggregator states (RESERVING/ACTIVATING/DEACTIVATING) are left alone — the
+state). Transient aggregator states (any outside ``RECONCILABLE_STATES``) are left alone — the
 connection is mid-transition and a later reconcile settles it.
 """
 

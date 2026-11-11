@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
-from orchestrator.core.services.processes import create_process
+from orchestrator.core.services.processes import _recoverwf, create_process
 from orchestrator.core.utils.json import json_dumps, json_loads
 from orchestrator.core.workflow import AwaitingCallback, ProcessStat, Step, runwf
 from orchestrator.core.workflow import Process as WFProcess
@@ -46,6 +46,10 @@ def assert_complete(result: WFProcess) -> None:
 
 def assert_awaiting_callback(result: WFProcess) -> None:
     assert result.on_failed(_raise_exception).isawaitingcallback(), f"Expected AwaitingCallback, but was: {result}"
+
+
+def assert_waiting(result: WFProcess) -> None:
+    assert result.iswaiting(), f"Expected Waiting, but was: {result}"
 
 
 def assert_failed(result: WFProcess) -> None:
@@ -119,4 +123,11 @@ def resume_callback(
         state=AwaitingCallback({**state, result_key: callback_result}),
     )
     result = runwf(resumed, _store_step(step_log))
+    return result, step_log
+
+
+def resume_waiting(process: ProcessStat, step_log: StepLog) -> tuple[WFProcess, StepLog]:
+    """Resume a workflow stopped in WAITING (a failed retrystep), as core's ``task_resume_workflows`` does."""
+    state, rest = _recoverwf(process.workflow, [logged for _, logged in step_log])
+    result = runwf(process.update(log=rest, state=state), _store_step(step_log))
     return result, step_log

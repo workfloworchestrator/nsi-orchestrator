@@ -18,8 +18,8 @@ provisions, releases, terminates and queries multi domain point-to-point connect
 
 Reserve/provision/release/terminate are asynchronous: the proxy answers ``202 Accepted`` and later
 POSTs the result (the full reservation, with a ``RESERVED`` / ``ACTIVATED`` / ``FAILED`` /
-``TERMINATED`` status) to the ``callbackURL`` the orchestrator supplies. The orchestrator drives
-these from a ``callback_step``; this client only fires the request and returns.
+``TERMINATING`` / ``TERMINATED`` status) to the ``callbackURL`` the orchestrator supplies. The
+orchestrator drives these from a ``callback_step``; this client only fires the request and returns.
 
 Authentication mirrors the dds-proxy, selected by ``AGGREGATOR_PROXY_MTLS_ENABLED`` (see
 :mod:`services.edge_auth`).
@@ -205,9 +205,12 @@ def release(connection_id: str, callback_url: str) -> None:
     _request("POST", f"/reservations/{connection_id}/release", json={"callbackURL": callback_url})
 
 
-def terminate(connection_id: str, callback_url: str) -> None:
-    """Terminate a RESERVED or FAILED connection; result (TERMINATED) arrives via the callback."""
-    _request("DELETE", f"/reservations/{connection_id}", json={"callbackURL": callback_url})
+def terminate(connection_id: str, callback_url: str | None = None) -> None:
+    """Terminate a connection; the reservation's status is POSTed to ``callback_url``, if given.
+
+    Without one, read the status with :func:`get_reservation`.
+    """
+    _request("DELETE", f"/reservations/{connection_id}", json={"callbackURL": callback_url} if callback_url else None)
 
 
 def get_reservation(connection_id: str, *, with_segments: bool = False) -> AggregatorReservation:

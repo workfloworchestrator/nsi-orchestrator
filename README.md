@@ -234,9 +234,12 @@ idempotently.
   state still match `GET /reservations/{connectionId}?detail=full`, and that a `RESERVED` or
   `ACTIVATED` connection's path holds every SDP VLAN the user pinned, on both STPs of that SDP.
 - **Terminate** — `RESERVED` or `FAILED` → `TERMINATED` via `DELETE /reservations/{connectionId}`.
+  The subscription closes only once the aggregator itself reports `TERMINATED`; until then the
+  process shows `waiting` and sends the terminate again every hour. Retry reservation terminates
+  the failed connection the same way.
 - **Reconcile** — re-read `GET /reservations/{connectionId}` and, if `state` drifted from the
   aggregator's stable state (e.g. a callback was missed after a network problem), update it;
-  transient states (RESERVING/ACTIVATING/DEACTIVATING) are left for a later run.
+  transient states (such as RESERVING or TERMINATING) are left for a later run.
 
 ### Path constraints
 
