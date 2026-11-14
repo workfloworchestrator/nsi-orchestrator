@@ -53,9 +53,11 @@ class Settings(BaseSettings):
     aggregator_proxy_client_dn: str = "CN=claude@local.laptop"
 
     # Backstop timeout for the aggregator callback_steps (reserve/provision/release/terminate). Sized
-    # above the proxy's own worst case (~480s: NSI_TIMEOUT 180 + DATAPLANE_TIMEOUT 300 in sequential
-    # phases) plus the ~30s timeout-sweep granularity, so it only fires when the proxy never reports
-    # back at all rather than racing a proxy that is about to deliver a real error.
+    # above the proxy's own worst case plus the ~30s timeout-sweep granularity, so it only fires when
+    # the proxy never reports back at all rather than racing a proxy that is about to deliver a real
+    # error. The worst case is the longer of provision/release (NSI_TIMEOUT 180 + DATAPLANE_TIMEOUT
+    # 300 = 480s, in sequential phases) and reserve/terminate (two NSI_TIMEOUT waits, 360s, plus the
+    # queries between them).
     aggregator_callback_timeout: int = 540  # seconds
 
     # How long a terminate waits for the aggregator to report TERMINATED before the process fails.

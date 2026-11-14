@@ -312,7 +312,7 @@ addition:
 | `REQUESTER_NSA` | `urn:ogf:network:example.net:2026:nsa:nsi-orchestrator` | NSA URN this orchestrator presents as the requester. |
 | `PROVIDER_NSA` | `urn:ogf:network:example.net:2026:nsa:safnari` | NSA URN of the target aggregator; must match the Aggregator Proxy's configured provider NSA. |
 | `ORCHESTRATOR_CALLBACK_BASE_URL` | `http://localhost:8080` | This orchestrator's externally reachable base URL; the Aggregator Proxy POSTs reservation results to `<base>/api/processes/{id}/callback/{token}`. Override in every deployment. |
-| `AGGREGATOR_CALLBACK_TIMEOUT` | `540` | Backstop timeout (seconds) for the aggregator callback steps; a step still awaiting a callback after this is failed so it can be retried or aborted. Sized above the proxy's worst case (`NSI_TIMEOUT` + `DATAPLANE_TIMEOUT`) plus the ~30s sweep granularity. |
+| `AGGREGATOR_CALLBACK_TIMEOUT` | `540` | Backstop timeout (seconds) for the aggregator callback steps; a step still awaiting a callback after this is failed so it can be retried or aborted. Sized above the proxy's worst case, the longer of `NSI_TIMEOUT` + `DATAPLANE_TIMEOUT` (provision, release) and 2 × `NSI_TIMEOUT` (reserve, terminate), plus the ~30s sweep granularity. |
 | `TERMINATE_CONFIRM_TIMEOUT` | `86400` | How long (seconds) a terminate waits for the aggregator to report `TERMINATED` before the process fails. Counted from the terminate callback and checked on hourly resumes, so accurate to about an hour. Between 1 and 31536000 (a year). |
 
 ### Access control

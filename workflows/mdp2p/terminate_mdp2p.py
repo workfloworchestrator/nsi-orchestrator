@@ -146,7 +146,10 @@ def record_terminated(subscription: MultiDomainPoint2Point) -> State:
 
 
 def terminate_at_aggregator() -> StepList:
-    """Terminate the connection and wait, up to ``terminate_confirm_timeout``, until the aggregator reports it TERMINATED."""
+    """Terminate the connection, then wait until the aggregator reports it TERMINATED.
+
+    The wait is bounded by ``terminate_confirm_timeout``.
+    """
     return (
         begin
         >> callback_step(
