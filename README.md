@@ -234,9 +234,14 @@ idempotently.
   state still match `GET /reservations/{connectionId}?detail=full`, and that a `RESERVED` or
   `ACTIVATED` connection's path holds every SDP VLAN the user pinned, on both STPs of that SDP.
 - **Terminate** — `RESERVED` or `FAILED` → `TERMINATED` via `DELETE /reservations/{connectionId}`.
+  The subscription closes only once the aggregator itself reports `TERMINATED`; until then the
+  process shows `waiting` and sends the terminate again every hour. After `TERMINATE_CONFIRM_TIMEOUT`
+  (24 hours) the process fails instead; retrying it sends the terminate once more and closes the
+  subscription if the aggregator has terminated by then. Retry reservation terminates the failed
+  connection the same way.
 - **Reconcile** — re-read `GET /reservations/{connectionId}` and, if `state` drifted from the
   aggregator's stable state (e.g. a callback was missed after a network problem), update it;
-  transient states (RESERVING/ACTIVATING/DEACTIVATING) are left for a later run.
+  transient states (such as RESERVING or TERMINATING) are logged and left for a later run.
 
 ### Path constraints
 
@@ -308,6 +313,7 @@ addition:
 | `PROVIDER_NSA` | `urn:ogf:network:example.net:2026:nsa:safnari` | NSA URN of the target aggregator; must match the Aggregator Proxy's configured provider NSA. |
 | `ORCHESTRATOR_CALLBACK_BASE_URL` | `http://localhost:8080` | This orchestrator's externally reachable base URL; the Aggregator Proxy POSTs reservation results to `<base>/api/processes/{id}/callback/{token}`. Override in every deployment. |
 | `AGGREGATOR_CALLBACK_TIMEOUT` | `540` | Backstop timeout (seconds) for the aggregator callback steps; a step still awaiting a callback after this is failed so it can be retried or aborted. Sized above the proxy's worst case (`NSI_TIMEOUT` + `DATAPLANE_TIMEOUT`) plus the ~30s sweep granularity. |
+| `TERMINATE_CONFIRM_TIMEOUT` | `86400` | How long (seconds) a terminate waits for the aggregator to report `TERMINATED` before the process fails. Counted from the terminate callback and checked on hourly resumes, so accurate to about an hour. Between 1 and 31536000 (a year). |
 
 ### Access control
 

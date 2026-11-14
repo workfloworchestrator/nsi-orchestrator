@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 
 from settings import Settings, _psycopg_dsn, settings
@@ -40,3 +41,12 @@ def test_module_singleton_instantiated() -> None:
 )
 def test_psycopg_dsn(uri: str, expected: str) -> None:
     assert _psycopg_dsn(uri) == expected
+
+
+@pytest.mark.parametrize(
+    "timeout", [pytest.param(0, id="zero-is-not-no-limit"), pytest.param(31_536_001, id="past-a-year")]
+)
+def test_terminate_confirm_timeout_is_bounded(timeout: int) -> None:
+    """A deadline of now, or past what a date can hold, would fail every terminate."""
+    with pytest.raises(ValidationError):
+        Settings(terminate_confirm_timeout=timeout)

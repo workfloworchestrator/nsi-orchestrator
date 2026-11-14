@@ -21,11 +21,16 @@ is monkeypatched per module to avoid singledispatch on a real lifecycle model.
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from types import ModuleType, SimpleNamespace
 
 import pytest
+from orchestrator.core.utils.datetime import nowtz
 from orchestrator.core.utils.errors import InconsistentDataError
+from orchestrator.core.workflow import Failed, Success, Waiting, make_step_function
+from structlog.testing import capture_logs
 
 from products.product_blocks.sdp_constraint import ConstraintType
 from services.aggregator_proxy import AggregatorReservation
@@ -63,24 +68,6 @@ def _vc_sub(**vc_fields: object) -> SimpleNamespace:
         pytest.param(
             "release_mdp2p", "process_release_result", "ACTIVATED", "FAILED", "FAILED", "boom", id="release-failed"
         ),
-        pytest.param(
-            "terminate_mdp2p",
-            "process_terminate_result",
-            "RESERVED",
-            "TERMINATED",
-            "TERMINATED",
-            "earlier",
-            id="terminate-reserved",
-        ),
-        pytest.param(
-            "terminate_mdp2p",
-            "process_terminate_result",
-            "FAILED",
-            "TERMINATED",
-            "TERMINATED",
-            "earlier",
-            id="terminate-failed",
-        ),
     ],
 )
 def test_process_step_sets_state_and_refreshes_description(
@@ -106,12 +93,107 @@ def test_process_step_sets_state_and_refreshes_description(
     assert updated.description == f"desc({expected_state})"
 
 
+@pytest.mark.parametrize("start_state", ["RESERVED", "FAILED"])
+def test_record_terminated_keeps_the_last_error(start_state: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A terminated circuit still shows why it failed."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    monkeypatch.setattr(module, "description", lambda sub: f"desc({sub.vc.state})")
+
+    result = module.record_terminated.__wrapped__(
+        subscription=_vc_sub(state=start_state, connection_id="c1", last_error="earlier")
+    )
+
+    assert result["subscription"].vc.state == "TERMINATED"
+    assert result["subscription"].vc.last_error == "earlier"
+    assert result["subscription"].description == "desc(TERMINATED)"
+
+
 @pytest.mark.parametrize(
-    ("start_state", "aggregator_status", "expected_state", "expected_error"),
+    ("aggregator_status", "resend_error", "expected_error"),
     [
-        pytest.param("RESERVED", "FAILED", "FAILED", "aggregator says", id="drift-synced"),
-        pytest.param("RESERVED", "ACTIVATING", "RESERVED", "earlier", id="transient-left-alone"),
-        pytest.param("FAILED", "FAILED", "FAILED", "aggregator says", id="in-sync-error-backfilled"),
+        pytest.param("TERMINATED", None, None, id="terminated"),
+        # A child that never confirmed: the aggregator is still terminating, whatever the callback said.
+        pytest.param("TERMINATING", None, "TERMINATING.*a child did not reply.*sent again", id="still-terminating"),
+        pytest.param("RESERVED", None, "RESERVED.*a child did not reply.*sent again", id="terminate-not-taken"),
+        # The error an operator reads still names the aggregator's status when the proxy refuses the resend.
+        pytest.param(
+            "TERMINATING", "failed: 422", "TERMINATING.*a child did not reply.*not accepted.*422", id="refused"
+        ),
+    ],
+)
+def test_confirm_terminated(
+    aggregator_status: str, resend_error: str | None, expected_error: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the aggregator's own TERMINATED counts; otherwise terminate is sent again and the step waits."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    sent: list[tuple[object, ...]] = []
+
+    def terminate(*args: object) -> None:
+        sent.append(args)
+        if resend_error:
+            raise module.aggregator_proxy.AggregatorProxyError(resend_error)
+
+    monkeypatch.setattr(
+        module.aggregator_proxy,
+        "get_reservation",
+        lambda cid: SimpleNamespace(status=aggregator_status, last_error="a child did not reply"),
+    )
+    monkeypatch.setattr(module.aggregator_proxy, "terminate", terminate)
+    step = inspect.unwrap(module.confirm_terminated)
+
+    if expected_error is None:
+        assert step(subscription={"vc": {"connection_id": "c1"}}) == {}
+        assert sent == []
+    else:
+        with pytest.raises(module.TerminateNotConfirmedError, match=expected_error):
+            step(subscription={"vc": {"connection_id": "c1"}})
+        assert sent == [("c1",)]  # without a callbackURL: nothing awaits one
+
+
+@pytest.mark.parametrize(
+    ("inner", "deadline", "expected"),
+    [
+        pytest.param(Waiting(RuntimeError("no")), "2999-01-01T00:00:00+00:00", Waiting, id="waits-before-the-deadline"),
+        pytest.param(Waiting(RuntimeError("no")), None, Waiting, id="waits-without-a-deadline"),
+        pytest.param(Waiting(RuntimeError("no")), "2020-01-01T00:00:00+00:00", Failed, id="fails-past-the-deadline"),
+        pytest.param(Success({}), "2020-01-01T00:00:00+00:00", Success, id="success-passes-through"),
+    ],
+)
+def test_fail_after_deadline(inner: Waiting | Success, deadline: str | None, expected: type) -> None:
+    """Only a step that is still waiting once the deadline has passed becomes a failure, naming why."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    step = module.fail_after_deadline(make_step_function(lambda _state: inner, "inner"))
+
+    result = step({} if deadline is None else {"terminate_confirm_deadline": deadline})
+    carried = str(result.unwrap())
+
+    assert type(result) is expected
+    if expected is Failed:
+        assert carried == "no; gave up waiting"
+
+
+def test_process_terminate_result_sets_the_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The deadline is ``terminate_confirm_timeout`` after the callback, in the state for every later attempt."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    monkeypatch.setattr(module.settings, "terminate_confirm_timeout", 3600)
+
+    before = nowtz()
+    result = module.process_terminate_result.__wrapped__(
+        subscription={"vc": {"connection_id": "c1"}}, callback_result={"status": "TERMINATING"}
+    )
+    after = nowtz()
+
+    deadline = datetime.fromisoformat(result["terminate_confirm_deadline"])
+    assert before + timedelta(hours=1) <= deadline <= after + timedelta(hours=1)
+
+
+@pytest.mark.parametrize(
+    ("start_state", "aggregator_status", "expected_state", "expected_error", "logs_left_alone"),
+    [
+        pytest.param("RESERVED", "FAILED", "FAILED", "aggregator says", False, id="drift-synced"),
+        pytest.param("RESERVED", "ACTIVATING", "RESERVED", "earlier", True, id="transient-left-alone"),
+        pytest.param("RESERVED", "TERMINATING", "RESERVED", "earlier", True, id="terminating-left-alone"),
+        pytest.param("FAILED", "FAILED", "FAILED", "aggregator says", False, id="in-sync-error-backfilled"),
     ],
 )
 def test_reconcile_connection_state(
@@ -119,9 +201,10 @@ def test_reconcile_connection_state(
     aggregator_status: str,
     expected_state: str,
     expected_error: str,
+    logs_left_alone: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Any stable aggregator status brings its lastError along; a transient one leaves both alone."""
+    """Any stable aggregator status brings its lastError along; a transient one leaves both alone, and says so."""
     module = importlib.import_module("workflows.mdp2p.reconcile_mdp2p")
     monkeypatch.setattr(module, "description", lambda sub: f"desc({sub.vc.state})")
     monkeypatch.setattr(
@@ -132,10 +215,15 @@ def test_reconcile_connection_state(
     step = module.reconcile_connection_state.__wrapped__
 
     subscription = _vc_sub(state=start_state, connection_id="c1", last_error="earlier")
-    result = step(subscription=subscription)
+    with capture_logs() as logs:
+        result = step(subscription=subscription)
 
     assert result["subscription"].vc.state == expected_state
     assert result["subscription"].vc.last_error == expected_error
+    left_alone = [log for log in logs if "left alone" in log["event"]]
+    assert [(log["connection_id"], log["aggregator_status"], log["stored_state"]) for log in left_alone] == (
+        [("c1", aggregator_status, start_state)] if logs_left_alone else []
+    )
 
 
 def _sdp_constraint(vlan: int | None, constraint_type: ConstraintType = ConstraintType.INCLUDE) -> SimpleNamespace:

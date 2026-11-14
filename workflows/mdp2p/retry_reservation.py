@@ -50,7 +50,7 @@ from workflows.mdp2p.shared.forms import (
     stp_block_for,
 )
 from workflows.mdp2p.shared.fsm import ConnectionState, apply
-from workflows.mdp2p.terminate_mdp2p import terminate_connection
+from workflows.mdp2p.terminate_mdp2p import terminate_at_aggregator
 from workflows.shared import raise_form_validation_error
 
 logger = structlog.get_logger(__name__)
@@ -102,8 +102,8 @@ def initial_input_form_generator(subscription_id: UUIDstr) -> FormGenerator:
     return user_input_dict | path | {"subscription": subscription}
 
 
-@step("Process terminate result")
-def process_terminate_result(subscription: MultiDomainPoint2PointProvisioning) -> State:
+@step("Drop the terminated connection")
+def drop_terminated_connection(subscription: MultiDomainPoint2PointProvisioning) -> State:
     """Drop the old connection id; ``update_subscription`` applies the ``retry`` transition."""
     logger.info("terminated the failed connection", connection_id=subscription.vc.connection_id)
     subscription.vc.connection_id = None
@@ -153,14 +153,7 @@ def retry_reservation() -> StepList:
     return (
         begin
         >> set_status(SubscriptionLifecycle.PROVISIONING)
-        >> has_connection(
-            callback_step(
-                name=f"Terminate the failed connection (timeout {settings.aggregator_callback_timeout} seconds)",
-                action_step=terminate_connection,
-                validate_step=process_terminate_result,
-                timeout=settings.aggregator_callback_timeout,
-            )
-        )
+        >> has_connection(terminate_at_aggregator() >> drop_terminated_connection)
         >> update_subscription
         >> callback_step(
             name=f"Reserve connection (timeout {settings.aggregator_callback_timeout} seconds)",

@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -56,6 +57,11 @@ class Settings(BaseSettings):
     # phases) plus the ~30s timeout-sweep granularity, so it only fires when the proxy never reports
     # back at all rather than racing a proxy that is about to deliver a real error.
     aggregator_callback_timeout: int = 540  # seconds
+
+    # How long a terminate waits for the aggregator to report TERMINATED before the process fails.
+    # Counted from the terminate callback and checked on hourly resumes, so accurate to about an hour.
+    # At most a year, so the deadline stays a valid date.
+    terminate_confirm_timeout: int = Field(default=86400, gt=0, le=31_536_000)  # seconds
 
     # NSA URNs exchanged with the aggregator: who is asking (this orchestrator) and which
     # aggregator answers. provider_nsa must match the aggregator-proxy's configured PROVIDER_NSA.

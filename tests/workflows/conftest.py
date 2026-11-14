@@ -228,7 +228,7 @@ def aggregator(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(aggregator_proxy, "reserve", lambda **_kwargs: "conn-1")
     monkeypatch.setattr(aggregator_proxy, "provision", lambda _cid, _url: None)
     monkeypatch.setattr(aggregator_proxy, "release", lambda _cid, _url: None)
-    monkeypatch.setattr(aggregator_proxy, "terminate", lambda _cid, _url: None)
+    monkeypatch.setattr(aggregator_proxy, "terminate", lambda _cid, _url=None: None)
 
 
 @pytest.fixture

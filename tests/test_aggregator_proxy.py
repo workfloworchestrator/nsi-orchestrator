@@ -22,7 +22,7 @@ import httpx2
 import pytest
 
 from services import aggregator_proxy
-from services.aggregator_proxy import AggregatorProxyError, get_reservation, list_reservations, reserve
+from services.aggregator_proxy import AggregatorProxyError, get_reservation, list_reservations, reserve, terminate
 
 RESERVATION_JSON = {
     "globalReservationId": "urn:uuid:1234",
@@ -186,6 +186,29 @@ def test_list_reservations_with_segments_asks_for_full_detail(monkeypatch: pytes
     assert [(s.source_stp, s.dest_stp) for s in reservation.segments] == [
         ("urn:ogf:network:a?vlan=100", "urn:ogf:network:a:to-b?vlan=1800")
     ]
+
+
+@pytest.mark.parametrize(
+    ("callback_url", "expected_body"),
+    [
+        pytest.param("https://orchestrator/cb", {"callbackURL": "https://orchestrator/cb"}, id="with-callback"),
+        pytest.param(None, None, id="without-callback"),
+    ],
+)
+def test_terminate_sends_a_body_only_with_a_callback_url(
+    monkeypatch: pytest.MonkeyPatch, callback_url: str | None, expected_body: dict | None
+) -> None:
+    seen: dict = {}
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.update(method=request.method, path=request.url.path, body=json.loads(request.content or "null"))
+        return httpx2.Response(202, json={"instance": "/reservations/conn-1"})
+
+    _install_mock_transport(monkeypatch, handler)
+
+    terminate("conn-1", callback_url)
+
+    assert seen == {"method": "DELETE", "path": "/reservations/conn-1", "body": expected_body}
 
 
 def test_request_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
