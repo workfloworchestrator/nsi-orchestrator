@@ -26,6 +26,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 from orchestrator.core.utils.errors import InconsistentDataError
+from structlog.testing import capture_logs
 
 from products.product_blocks.sdp_constraint import ConstraintType
 from services.aggregator_proxy import AggregatorReservation
@@ -146,12 +147,12 @@ def test_confirm_terminated(
 
 
 @pytest.mark.parametrize(
-    ("start_state", "aggregator_status", "expected_state", "expected_error"),
+    ("start_state", "aggregator_status", "expected_state", "expected_error", "logs_left_alone"),
     [
-        pytest.param("RESERVED", "FAILED", "FAILED", "aggregator says", id="drift-synced"),
-        pytest.param("RESERVED", "ACTIVATING", "RESERVED", "earlier", id="transient-left-alone"),
-        pytest.param("RESERVED", "TERMINATING", "RESERVED", "earlier", id="terminating-left-alone"),
-        pytest.param("FAILED", "FAILED", "FAILED", "aggregator says", id="in-sync-error-backfilled"),
+        pytest.param("RESERVED", "FAILED", "FAILED", "aggregator says", False, id="drift-synced"),
+        pytest.param("RESERVED", "ACTIVATING", "RESERVED", "earlier", True, id="transient-left-alone"),
+        pytest.param("RESERVED", "TERMINATING", "RESERVED", "earlier", True, id="terminating-left-alone"),
+        pytest.param("FAILED", "FAILED", "FAILED", "aggregator says", False, id="in-sync-error-backfilled"),
     ],
 )
 def test_reconcile_connection_state(
@@ -159,9 +160,10 @@ def test_reconcile_connection_state(
     aggregator_status: str,
     expected_state: str,
     expected_error: str,
+    logs_left_alone: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Any stable aggregator status brings its lastError along; a transient one leaves both alone."""
+    """Any stable aggregator status brings its lastError along; a transient one leaves both alone, and says so."""
     module = importlib.import_module("workflows.mdp2p.reconcile_mdp2p")
     monkeypatch.setattr(module, "description", lambda sub: f"desc({sub.vc.state})")
     monkeypatch.setattr(
@@ -172,10 +174,15 @@ def test_reconcile_connection_state(
     step = module.reconcile_connection_state.__wrapped__
 
     subscription = _vc_sub(state=start_state, connection_id="c1", last_error="earlier")
-    result = step(subscription=subscription)
+    with capture_logs() as logs:
+        result = step(subscription=subscription)
 
     assert result["subscription"].vc.state == expected_state
     assert result["subscription"].vc.last_error == expected_error
+    left_alone = [log for log in logs if "left alone" in log["event"]]
+    assert [(log["connection_id"], log["aggregator_status"], log["stored_state"]) for log in left_alone] == (
+        [("c1", aggregator_status, start_state)] if logs_left_alone else []
+    )
 
 
 def _sdp_constraint(vlan: int | None, constraint_type: ConstraintType = ConstraintType.INCLUDE) -> SimpleNamespace:

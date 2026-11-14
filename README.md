@@ -239,7 +239,7 @@ idempotently.
   the failed connection the same way.
 - **Reconcile** — re-read `GET /reservations/{connectionId}` and, if `state` drifted from the
   aggregator's stable state (e.g. a callback was missed after a network problem), update it;
-  transient states (such as RESERVING or TERMINATING) are left for a later run.
+  transient states (such as RESERVING or TERMINATING) are logged and left for a later run.
 
 ### Path constraints
 

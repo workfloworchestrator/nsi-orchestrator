@@ -62,6 +62,13 @@ def reconcile_connection_state(subscription: MultiDomainPoint2Point) -> State:
     # Also when the state already matches, so a circuit that failed before last_error existed gets it.
     if reservation.status in RECONCILABLE_STATES:
         subscription.vc.last_error = reservation.last_error
+    else:
+        logger.info(
+            "aggregator status is not a final one, state left alone",
+            connection_id=subscription.vc.connection_id,
+            aggregator_status=reservation.status,
+            stored_state=subscription.vc.state,
+        )
 
     return {"subscription": subscription}
 
