@@ -15,13 +15,12 @@
 
 A client that drops an ``/api/ws/events`` connection used to surface as a full
 ``Exception in ASGI application`` traceback. ``remove_ws`` is fixed in core 5.4.0
-(workfloworchestrator/orchestrator-core#1904); ``disconnect`` is fixed by
-workfloworchestrator/orchestrator-core#1928 and is marked xfail until that ships.
+(workfloworchestrator/orchestrator-core#1904) and ``disconnect`` in core 5.5.0
+(workfloworchestrator/orchestrator-core#1928).
 
 These test core, not this repo, which is deliberate: they are the condition under which we chose not
-to carry a log filter for this (nsi-orchestrator#68). ``xfail(strict=True)`` fails once the case
-starts passing, so the upgrade that fixes it forces this file to be updated rather than leaving a
-stale assumption in place.
+to carry a log filter for this (nsi-orchestrator#68). A core upgrade that regresses either case
+fails here.
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import WebSocket
 from orchestrator.core.websocket.managers.memory_websocket_manager import MemoryWebsocketManager
 from starlette.websockets import WebSocketState
@@ -58,7 +56,6 @@ def test_remove_ws_tolerates_already_closed_peer() -> None:
     assert manager.connections_by_pid == {}
 
 
-@pytest.mark.xfail(strict=True, reason="needs orchestrator-core#1928; drop this mark when it ships")
 def test_disconnect_tolerates_already_closed_peer() -> None:
     """The endpoints call disconnect() directly to reject a client, bypassing remove_ws."""
     asyncio.run(MemoryWebsocketManager().disconnect(_dead_ws()))
