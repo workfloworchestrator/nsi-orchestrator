@@ -125,8 +125,8 @@ local dev DB `nsi`. Both need the pgvector extension.
 - **Async aggregator operations use `callback_step`.** reserve/provision/release/terminate fire a
   request with a `callback_route` (`retry_reservation` chains a terminate and a reserve, the first
   behind a `conditional`), the aggregator-proxy POSTs the result back, and the validate step
-  reads it from `callback_result` (terminate's only logs it, see below). `callback_step(...)` is a
-  single `step_group` in `workflow.steps`
+  reads it from `callback_result` (terminate's logs it and sets a deadline, see below).
+  `callback_step(...)` is a single `step_group` in `workflow.steps`
   (it is *not* expanded into sub-steps); the awaiting state carries
   `__sub_step == "<group> - Await callback"`. Each passes `timeout=settings.aggregator_callback_timeout`
   (540s) as a backstop: a step still awaiting after the timeout is failed by orchestrator-core's
@@ -178,7 +178,12 @@ local dev DB `nsi`. Both need the pgvector extension.
   back and, unless it is `TERMINATED`, sends terminate again without a `callbackURL` and raises; the
   process goes `waiting` and core's `task_resume_workflows` retries it hourly. It is a retrystep,
   not a failing validate step, because a failed process waits for a manual retry, which would replay
-  the whole callback group (see above) and await a new callback.
+  the whole callback group (see above) and await a new callback. The wait is bounded:
+  `process_terminate_result` puts a deadline (`terminate_confirm_timeout`, 24 h) in the state, since a
+  retrystep that raises is rerun from the state before it and cannot count attempts. Past it,
+  `fail_after_deadline` turns a `confirm_terminated` that is still waiting, whatever kept it from
+  succeeding, into a failed step. The last attempt still reads and resends, and so does retrying the
+  failed step, which sits outside the callback group and replays nothing.
 - **A scheduled task that fails by design must not carry `run_predicate=no_uncompleted_instance`.**
   The predicate counts `failed` / `inconsistent_data` / `api_unavailable` as uncompleted, and
   `task_clean_up_tasks` only reaps `completed`, so the first failure would block every later run —

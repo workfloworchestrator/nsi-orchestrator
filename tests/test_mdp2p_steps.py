@@ -21,11 +21,15 @@ is monkeypatched per module to avoid singledispatch on a real lifecycle model.
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from types import ModuleType, SimpleNamespace
 
 import pytest
+from orchestrator.core.utils.datetime import nowtz
 from orchestrator.core.utils.errors import InconsistentDataError
+from orchestrator.core.workflow import Failed, Success, Waiting, make_step_function
 from structlog.testing import capture_logs
 
 from products.product_blocks.sdp_constraint import ConstraintType
@@ -135,7 +139,7 @@ def test_confirm_terminated(
         lambda cid: SimpleNamespace(status=aggregator_status, last_error="a child did not reply"),
     )
     monkeypatch.setattr(module.aggregator_proxy, "terminate", terminate)
-    step = module.confirm_terminated.__wrapped__
+    step = inspect.unwrap(module.confirm_terminated)
 
     if expected_error is None:
         assert step(subscription={"vc": {"connection_id": "c1"}}) == {}
@@ -144,6 +148,43 @@ def test_confirm_terminated(
         with pytest.raises(module.TerminateNotConfirmedError, match=expected_error):
             step(subscription={"vc": {"connection_id": "c1"}})
         assert sent == [("c1",)]  # without a callbackURL: nothing awaits one
+
+
+@pytest.mark.parametrize(
+    ("inner", "deadline", "expected"),
+    [
+        pytest.param(Waiting(RuntimeError("no")), "2999-01-01T00:00:00+00:00", Waiting, id="waits-before-the-deadline"),
+        pytest.param(Waiting(RuntimeError("no")), None, Waiting, id="waits-without-a-deadline"),
+        pytest.param(Waiting(RuntimeError("no")), "2020-01-01T00:00:00+00:00", Failed, id="fails-past-the-deadline"),
+        pytest.param(Success({}), "2020-01-01T00:00:00+00:00", Success, id="success-passes-through"),
+    ],
+)
+def test_fail_after_deadline(inner: Waiting | Success, deadline: str | None, expected: type) -> None:
+    """Only a step that is still waiting once the deadline has passed becomes a failure, naming why."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    step = module.fail_after_deadline(make_step_function(lambda _state: inner, "inner"))
+
+    result = step({} if deadline is None else {"terminate_confirm_deadline": deadline})
+    carried = str(result.unwrap())
+
+    assert type(result) is expected
+    if expected is Failed:
+        assert carried == "no; gave up waiting"
+
+
+def test_process_terminate_result_sets_the_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The deadline is ``terminate_confirm_timeout`` after the callback, in the state for every later attempt."""
+    module = importlib.import_module("workflows.mdp2p.terminate_mdp2p")
+    monkeypatch.setattr(module.settings, "terminate_confirm_timeout", 3600)
+
+    before = nowtz()
+    result = module.process_terminate_result.__wrapped__(
+        subscription={"vc": {"connection_id": "c1"}}, callback_result={"status": "TERMINATING"}
+    )
+    after = nowtz()
+
+    deadline = datetime.fromisoformat(result["terminate_confirm_deadline"])
+    assert before + timedelta(hours=1) <= deadline <= after + timedelta(hours=1)
 
 
 @pytest.mark.parametrize(

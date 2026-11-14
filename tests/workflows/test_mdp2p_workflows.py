@@ -24,6 +24,7 @@ from pydantic_forms.exceptions import FormValidationError
 from products.product_types.mdp2p import MultiDomainPoint2Point
 from services import aggregator_proxy
 from services.aggregator_proxy import AggregatorReservation
+from settings import settings
 from tests import held_reservation
 from tests.workflows import (
     assert_awaiting_callback,
@@ -391,6 +392,53 @@ def test_terminate_mdp2p_waits_until_a_later_attempt_is_confirmed(
     assert_complete(result)
     subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
     assert (subscription.vc.state, subscription.status) == ("TERMINATED", SubscriptionLifecycle.TERMINATED)
+
+
+def test_terminate_mdp2p_fails_once_the_deadline_passes_and_a_retry_can_still_close_it(
+    mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Waiting is bounded, so a stuck terminate shows as failed; retrying reads the aggregator again."""
+    monkeypatch.setattr(settings, "terminate_confirm_timeout", 0)  # the deadline is the callback itself
+    terminates = _stub_terminate(monkeypatch, "TERMINATING", "TERMINATED")
+
+    result, process, step_log = run_workflow("terminate_mdp2p", [{"subscription_id": mdp2p_subscription}, {}])
+    result, step_log = resume_callback(process, step_log, {"status": "TERMINATING"})
+
+    assert_failed(result)
+    assert extract_state(result)["class"] == "TerminateNotConfirmedError"
+    assert "gave up waiting" in str(extract_state(result)["error"])
+    subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
+    assert (subscription.vc.state, subscription.status) == ("RESERVED", SubscriptionLifecycle.ACTIVE)
+    assert terminates[1:] == [("conn-1",)]  # the failed step's own resend, without a callbackURL
+
+    # Not resume_waiting's usual case, but core's recovery of a failed process is the same replay.
+    result, _ = resume_waiting(process, step_log)
+
+    assert_complete(result)
+    subscription = MultiDomainPoint2Point.from_subscription(mdp2p_subscription)
+    assert (subscription.vc.state, subscription.status) == ("TERMINATED", SubscriptionLifecycle.TERMINATED)
+    assert len(terminates) == 2  # the failed step sits outside the callback group, which is not replayed
+
+
+def test_retry_reservation_fails_without_reserving_once_the_deadline_passes(
+    failed_mdp2p_subscription: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A terminate that never confirms must neither drop the old connection id nor reserve again."""
+    monkeypatch.setattr(settings, "terminate_confirm_timeout", 0)  # the deadline is the callback itself
+    _stub_terminate(monkeypatch, "TERMINATING")
+    reserves: list[object] = []
+    monkeypatch.setattr(aggregator_proxy, "reserve", lambda **kwargs: reserves.append(kwargs))
+
+    result, process, step_log = run_workflow(
+        "retry_reservation", [{"subscription_id": failed_mdp2p_subscription}, _CREATE_FORM, {}]
+    )
+    assert_awaiting_callback(result)
+    result, _ = resume_callback(process, step_log, {"status": "TERMINATING"})
+
+    assert_failed(result)
+    assert extract_state(result)["class"] == "TerminateNotConfirmedError"
+    assert reserves == []
+    assert MultiDomainPoint2Point.from_subscription(failed_mdp2p_subscription).vc.connection_id == "conn-1"
 
 
 def test_terminate_mdp2p_closes_an_already_terminated_connection(

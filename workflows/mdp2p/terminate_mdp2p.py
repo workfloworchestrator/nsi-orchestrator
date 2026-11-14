@@ -11,13 +11,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
+from datetime import datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
 import structlog
 from orchestrator.core.forms import FormPage
 from orchestrator.core.forms.validators import DisplaySubscription
-from orchestrator.core.workflow import StepList, begin, callback_step, conditional, retrystep, step
+from orchestrator.core.utils.datetime import nowtz
+from orchestrator.core.workflow import (
+    Failed,
+    Process,
+    Step,
+    StepList,
+    begin,
+    callback_step,
+    conditional,
+    make_step_function,
+    retrystep,
+    step,
+)
 from orchestrator.core.workflows.utils import terminate_workflow
 from pydantic import Field
 from pydantic_forms.types import InputForm, State, UUIDstr
@@ -67,16 +81,41 @@ def terminate_connection(subscription: MultiDomainPoint2Point, callback_route: s
 
 @step("Process terminate result")
 def process_terminate_result(subscription: State, callback_result: dict) -> State:
-    """Log the result; whether the connection is gone is decided by ``confirm_terminated``."""
+    """Log the result and set the deadline ``confirm_terminated`` gives up at.
+
+    Whether the connection is gone is decided by ``confirm_terminated``. The deadline travels in the
+    state because a retrystep that raises is rerun from the state before it, so it cannot count.
+    """
     logger.info(
         "terminate result",
         connection_id=subscription["vc"]["connection_id"],
         status=callback_result.get("status"),
         last_error=callback_result.get("lastError"),
     )
-    return {}
+    deadline = nowtz() + timedelta(seconds=settings.terminate_confirm_timeout)
+    return {"terminate_confirm_deadline": deadline.isoformat()}
 
 
+def fail_after_deadline(retry: Step) -> Step:
+    """Fail a retrystep that is still waiting once ``terminate_confirm_deadline`` has passed.
+
+    A retrystep can only wait. The deadline is read from the state because it cannot count attempts:
+    a raising step is rerun from the state before it. The last attempt still runs, so retrying the
+    failed step reads the aggregator and resends terminate once more.
+    """
+
+    @functools.wraps(retry)
+    def wrapper(state: State) -> Process:
+        result = retry(state)
+        deadline = state.get("terminate_confirm_deadline")
+        if result.iswaiting() and deadline and datetime.fromisoformat(deadline) <= nowtz():
+            return Failed(TerminateNotConfirmedError(f"{result.unwrap()}; gave up waiting"))
+        return result
+
+    return make_step_function(wrapper, retry.name, retry.form, retry.assignee)
+
+
+@fail_after_deadline
 @retrystep("Confirm the aggregator terminated the connection")
 def confirm_terminated(subscription: State) -> State:
     """Retried until the aggregator reports TERMINATED, sending terminate again on each attempt.
@@ -107,7 +146,7 @@ def record_terminated(subscription: MultiDomainPoint2Point) -> State:
 
 
 def terminate_at_aggregator() -> StepList:
-    """Terminate the connection and wait until the aggregator itself reports it TERMINATED."""
+    """Terminate the connection and wait, up to ``terminate_confirm_timeout``, until the aggregator reports it TERMINATED."""
     return (
         begin
         >> callback_step(
