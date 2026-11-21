@@ -8,7 +8,7 @@ dependencies = [
     "httpx2==2.16.0",
     "oauth2-lib==3.2.0",
     "orchestrator-core==5.6.0",
-    "pydantic-settings==2.16.2",
+    "pydantic-settings==2.16.3",
     "python-statemachine==3.2.2",
 ]
 
