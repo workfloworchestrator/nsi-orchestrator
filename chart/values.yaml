@@ -141,7 +141,7 @@ autoscaling:
 # managed Redis via env and leave this disabled.
 redis:
   enabled: false
-  image: redis:8-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+  image: redis:8-alpine@sha256:61d65002475565ac459faee56be20007561fe3cb6209a09cf967d25d3f3499cb
   resources:
     limits:
       cpu: 200m
