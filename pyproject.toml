@@ -5,7 +5,7 @@ description = "NSI WFO implentation"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "httpx2==2.16.0",
+    "httpx2==2.16.2",
     "oauth2-lib==3.2.0",
     "orchestrator-core==5.6.0",
     "pydantic-settings==2.16.3",
