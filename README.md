@@ -393,6 +393,13 @@ awaiting-callback sweep) are loaded by `scheduler load-initial-schedule`; this p
 `schedules.py` and are loaded by `scheduler load-project-schedule`. The chart's scheduler init
 container runs both. Both require Redis (`CACHE_URI`) and the singleton scheduler deployment.
 
+The scheduler starts whatever workflow the queue in Redis names, so anything that can write to
+Redis can start workflows without passing the API's group check. Set `redis.passwordSecret.name`
+to a Secret holding the password (key `REDIS_PASSWORD`, or `redis.passwordSecret.key`), for example
+the CSI-synced `<release>-secret`. Redis then requires it and the app and scheduler get it in
+`CACHE_URI`, so use a URL-safe password such as `openssl rand -hex 32`. After the password changes,
+restart Redis, the app and the scheduler together.
+
 ```shell
 uv run python main.py scheduler load-project-schedule   # register this project's schedules
 uv run python main.py scheduler show-schedule           # list what is registered

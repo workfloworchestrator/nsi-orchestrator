@@ -65,9 +65,26 @@ envFrom:
 {{- end }}
 {{- if .Values.redis.enabled }}
 env:
-  - name: CACHE_URI
-    value: "redis://{{ include "nsi-orchestrator.fullname" . }}-redis:6379/0"
+  {{- include "nsi-orchestrator.redisEnv" . | nindent 2 }}
 {{- end }}
+{{- end }}
+
+{{/*
+The bundled Redis as the app and the scheduler see it: the password, when set, and CACHE_URI built
+from it. $(REDIS_PASSWORD) is expanded by Kubernetes, so the password entry must come first.
+*/}}
+{{- define "nsi-orchestrator.redisEnv" -}}
+{{- with .Values.redis.passwordSecret }}
+{{- if .name }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .name }}
+      key: {{ .key }}
+{{- end }}
+{{- end }}
+- name: CACHE_URI
+  value: "redis://{{ if .Values.redis.passwordSecret.name }}:$(REDIS_PASSWORD)@{{ end }}{{ include "nsi-orchestrator.fullname" . }}-redis:6379/0"
 {{- end }}
 
 {{/*

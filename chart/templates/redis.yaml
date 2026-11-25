@@ -18,13 +18,55 @@ spec:
         app.kubernetes.io/name: {{ include "nsi-orchestrator.name" . }}-redis
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      automountServiceAccountToken: false
+      # UID and GID of the redis user in the official image.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: redis
           image: "{{ .Values.redis.image }}"
+          # Skips the image entrypoint, which loads search, JSON, bloom and timeseries (12 MB more).
+          command: ["redis-server"]
+          # No RDB or AOF: queue items are consumed at once and the schedules live in the database.
+          args:
+            {{- if .Values.redis.passwordSecret.name }}
+            - --requirepass
+            - $(REDISCLI_AUTH)
+            {{- end }}
+            - --save
+            - ""
+            - --appendonly
+            - "no"
+          {{- with .Values.redis.passwordSecret }}
+          {{- if .name }}
+          # redis-cli, and so the probes, authenticate with REDISCLI_AUTH.
+          env:
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+          {{- end }}
+          {{- end }}
           ports:
             - name: redis
               containerPort: 6379
               protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
           {{- with .Values.redis.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

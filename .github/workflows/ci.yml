@@ -60,3 +60,11 @@ jobs:
           python-version: "3.13"
       - run: uv sync
       - run: uv run pytest
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: helm lint chart
+      - run: helm lint chart --set redis.enabled=true --set scheduler.enabled=true
+      - run: helm lint chart --set redis.enabled=true --set scheduler.enabled=true --set redis.passwordSecret.name=t-secret

@@ -156,6 +156,12 @@ local dev DB `nsi`. Both need the pgvector extension.
   `null`: it has no release timestamp, so Renovate would keep `renovate/stability-days` pending
   forever and never automerge it.
 
+- **The scheduler queue is the Redis security boundary.** The scheduler pops `scheduler:queue:` and,
+  for a `create` item whose `workflow_id` merely exists, starts `workflow_name` with `user_inputs`. A
+  writer to Redis can therefore start any workflow without the OIDC group gate. `redis.passwordSecret`
+  puts a password on the bundled Redis and into `CACHE_URI` (`redis://:$(REDIS_PASSWORD)@…`, built by
+  the `redisEnv` helper, whose password entry must come before `CACHE_URI`). Keep the password a hex
+  string so the URL stays valid.
 - **Register a system task with `create_task`, not `create_workflow`.** It belongs to no product, so
   it must not be linked into `products_workflows`. `create_task` inserts `target='SYSTEM'` and
   `is_task=TRUE` itself, and requires a `description` (`workflows.description` is `NOT NULL`).

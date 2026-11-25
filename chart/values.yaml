@@ -141,7 +141,14 @@ autoscaling:
 # managed Redis via env and leave this disabled.
 redis:
   enabled: false
-  image: redis:8-alpine@sha256:5af80107c1eeecb484a2269b80a26d12bfa6521787da4663bd9f19f60a163483
+  # An exact tag, so Renovate bumps go through the release age check; a digest-only update of a
+  # floating tag skips it.
+  image: redis:8.10.3-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+  # Secret with the Redis password, e.g. the CSI-synced "<release>-secret". The app and the
+  # scheduler get it in CACHE_URI, so keep it URL-safe (hex). Empty name: no password.
+  passwordSecret:
+    name: ""
+    key: REDIS_PASSWORD
   resources:
     limits:
       cpu: 200m

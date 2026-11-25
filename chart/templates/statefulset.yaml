@@ -76,8 +76,7 @@ spec:
             {{- end }}
           {{- end }}
           {{- if .Values.redis.enabled }}
-            - name: CACHE_URI
-              value: "redis://{{ include "nsi-orchestrator.fullname" . }}-redis:6379/0"
+            {{- include "nsi-orchestrator.redisEnv" . | nindent 12 }}
           {{- end }}
           envFrom:
           {{- if .Values.secretProviderClass.enabled }}
