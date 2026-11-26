@@ -29,4 +29,6 @@ COPY --chown=orchestrator:orchestrator alembic.ini ./
 COPY --chown=orchestrator:orchestrator migrations ./migrations
 COPY --chown=orchestrator:orchestrator translations ./translations
 EXPOSE 8080/tcp
+# websockets answers a header line over 8192 bytes with 431; an OIDC session cookie can exceed that.
+ENV WEBSOCKETS_MAX_LINE_LENGTH=32768
 CMD ["python", "-m", "uvicorn", "wsgi:app", "--host", "0.0.0.0", "--port", "8080"]

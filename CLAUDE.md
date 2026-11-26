@@ -261,6 +261,10 @@ local dev DB `nsi`. Both need the pgvector extension.
   fields. A field on `VirtualCircuitBlockInactive` alone is set by the step and then silently dropped
   on save. The `process_*_result` steps set it from the callback's `lastError` on failure and clear it
   on success. Terminate leaves it, so a terminated circuit still shows why it failed.
+- **The websocket upgrade has its own header line limit.** uvicorn hands `/api/ws/events` to `websockets`,
+  which logs a 431 for a header line over 8192 bytes; the client gets no response and hangs. REST requests
+  with the same headers pass. The `Dockerfile` raises the limit with `WEBSOCKETS_MAX_LINE_LENGTH`. The log
+  line is `HTTP response sent (431 ...)`, with no access-log line.
 
 ## Conventions
 
